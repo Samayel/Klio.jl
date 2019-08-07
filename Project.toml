@@ -3,6 +3,10 @@ uuid = "ebddda56-b924-11e9-093d-8d11c3d797d6"
 authors = ["Markus John <johm@quyo.de>"]
 version = "0.1.0"
 
+[deps]
+Dates = "ade2ca70-3891-5945-98fb-dc099432e06a"
+Genie = "c43c736e-a2d1-11e8-161f-af95117fbd1e"
+
 [compat]
 julia = "1"
 
