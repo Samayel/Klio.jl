@@ -16,25 +16,27 @@ run() = begin
     route("/choose", method = POST) do
         nick = @params(:user_name)
         text = @params(:text)
-        if length(text) < 1
-            reply = string("@", nick, " Du musst mir schon sagen was du mit /choose aussuchen möchtest. Das Kristallkugel-Modul bekomme ich erst in Version 2 :(")
+        
+        options = split(text)
+        # Weg mit dem !choose
+        popfirst!(options)
+        
+        if length(options) == 0
+            reply = string("@", nick, ", du musst mir schon sagen was du mit !choose aussuchen möchtest. Das Kristallkugel-Modul bekomme ich erst in Version 2 :(")
+        elseif length(options) == 1
+            # Ja/Nein
+            choice = rand(0:1)
+            reply = string("@", nick, ", ich sage: ", choice == 0 ? "Nein" : "Ja")
         else
-            options = split(text)
-            if length(options) == 1
-                # Ja/Nein
-                choice = rand(0:1)
-                reply = string("@", nick, ", deine einzige Option ist ", text, "?\nIch sage: ", choice == 0 ? "Nein" : "Ja")
+            choice = 0
+            legacy_joke = rand()
+            if legacy_joke > 0.98
+                push!(options, "Ja")
+                choice = length(options)
             else
-                choice = 0
-                legacy_joke = rand()
-                if legacy_joke > 0.98
-                    push!(options, "Ja")
-                    choice = length(options)
-                else
-                    choice = rand(1:length(options))
-                end
-                reply = string("@", nick, ", Du möchtest dich zwischen diesen Optionen entscheiden: ", join(options, ", "), "?\n Ich sage: ", options[choice])
+                choice = rand(1:length(options))
             end
+            reply = string("@", nick, ", ich sage: ", options[choice])
         end
         Dict(:response_type => "in_channel", :text => reply) |> json
     end
