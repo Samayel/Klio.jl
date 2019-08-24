@@ -71,3 +71,43 @@ function add(req::OutgoingWebhookRequest)::OutgoingWebhookResponse
 
     return OutgoingWebhookResponse("Ich habe den neuen Eintrag " * item * "[" * string(count) * "] hinzugefügt.")
 end
+
+function expl(req::OutgoingWebhookRequest)::OutgoingWebhookResponse
+    parts = split(req.text, limit = 2)
+    if length(parts) !== 2
+        return OutgoingWebhookResponse("Syntax: !expl <Begriff>")
+    end
+    _, item = parts
+    item_norm = _expl_item_normalize(item)
+
+    db = _expl_db()
+
+    entries = []
+    index = 0
+    for nt in SQLite.Query(db, "SELECT nick, item, expl, datetime FROM t_expl WHERE item_norm = :item_norm ORDER BY id",
+        values = Dict{Symbol, Any}([
+            :item_norm => item_norm,
+        ]))
+
+        index = index + 1
+        datetime = Dates.format(ZonedDateTime(Dates.epochms2datetime(nt.:datetime), settings.expl_time_zone, from_utc = true), settings.expl_datetime_format)
+        entry = nt.:item * "[" * string(index) * "]: " * replace(nt.:expl, r"[[:space:]]" => " ") * " (" * nt.:nick * ", " * datetime * ")"
+        push!(entries, entry)
+    end
+
+    if index == 0
+        text = "Ich habe leider keinen Eintrag gefunden."
+    else
+        if index == 1
+            text = "Ich habe den folgenden Eintrag gefunden:"
+        else
+            text = "Ich habe die folgenden " * string(index) * " Einträge gefunden:"
+        end
+        text = text * "\n```\n" * join(entries, '\n') * "\n```"
+    end
+
+    title = "!expl " * item
+    fallback = "Es tut mir leid, dein Client kann die Ergebnisse von !expl leider nicht anzeigen."
+
+    return OutgoingWebhookResponse([MessageAttachment(fallback, title, text)])
+end

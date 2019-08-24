@@ -23,19 +23,36 @@ Enum for `response_type`. Can be post (default if not specified) or comment.
 @enum OutgoingWebhookResponseType post comment
 
 """
+    MessageAttachment
+Message attachment type. This is just a subset of the attributes.
+See https://docs.mattermost.com/developer/message-attachments.html for a
+documentation of the other attributes.
+"""
+struct MessageAttachment
+    fallback::String
+    title::String
+    text::String
+end
+
+"""
     OutgoingWebhookResponse
 Response type for outgoing webhooks. This is just a subset of the attributes.
 See https://developers.mattermost.com/integrate/outgoing-webhooks/ for a
 somewhat complete description of the JSON format.
 """
 struct OutgoingWebhookResponse
-    text::String
+    text::Union{String, Nothing}
     response_type::Union{OutgoingWebhookResponseType, Nothing}
-    OutgoingWebhookResponse(text, response_type = nothing) = new(text, response_type)
+    attachments::Union{AbstractArray{MessageAttachment}, Nothing}
+
+    OutgoingWebhookResponse(text::String, attachments = nothing, response_type = nothing) = new(text, response_type, attachments)
+    OutgoingWebhookResponse(attachments::Vector{MessageAttachment}, response_type = nothing) = new(nothing, response_type, attachments)
 end
 
 # format specification for OutgoingWebhookResponse
 JSON2.@format OutgoingWebhookResponse begin
     # omitempty=true: don't write JSON null value for nothing
+    text => (omitempty=true,)
     response_type => (omitempty=true,)
+    attachments => (omitempty=true,)
 end
