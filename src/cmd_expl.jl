@@ -73,7 +73,7 @@ function add(req::OutgoingWebhookRequest)::OutgoingWebhookResponse
 end
 
 function expl(req::OutgoingWebhookRequest)::OutgoingWebhookResponse
-    parts = split(rstrip(req.text), limit = 2)
+    parts = split(rstrip(req.text), limit = 3)
     if length(parts) !== 2
         return OutgoingWebhookResponse("Syntax: !expl <Begriff>")
     end
