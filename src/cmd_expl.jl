@@ -90,8 +90,13 @@ function expl(req::OutgoingWebhookRequest)::OutgoingWebhookResponse
         ]))
 
         index = index + 1
-        datetime = Dates.format(ZonedDateTime(Dates.epochms2datetime(nt.:datetime), settings.expl_time_zone, from_utc = true), settings.expl_datetime_format)
-        entry = nt.:item * "[" * string(index) * "]: " * replace(nt.:expl, r"[[:space:]]" => " ") * " (" * nt.:nick * ", " * datetime * ")"
+        entry = nt.:item * "[" * string(index) * "]: " * replace(nt.:expl, r"[[:space:]]" => " ") * " (" * nt.:nick
+        if !ismissing(nt.:datetime)
+            datetime = Dates.format(ZonedDateTime(Dates.epochms2datetime(nt.:datetime), settings.expl_time_zone, from_utc = true), settings.expl_datetime_format)
+            entry = entry * ", " * datetime
+        end
+        entry = entry * ")"
+
         push!(entries, entry)
     end
 
