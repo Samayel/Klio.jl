@@ -43,7 +43,7 @@ _expl_item_normalize(item) = Unicode.normalize(item,
     stable = true)
 
 function add(req::OutgoingWebhookRequest)::OutgoingWebhookResponse
-    parts = split(req.text, limit = 3)
+    parts = split(rstrip(req.text), limit = 3)
     if length(parts) !== 3
         return OutgoingWebhookResponse("Syntax: !add <Begriff> <Erklärung>")
     end
@@ -73,7 +73,7 @@ function add(req::OutgoingWebhookRequest)::OutgoingWebhookResponse
 end
 
 function expl(req::OutgoingWebhookRequest)::OutgoingWebhookResponse
-    parts = split(req.text, limit = 2)
+    parts = split(rstrip(req.text), limit = 2)
     if length(parts) !== 2
         return OutgoingWebhookResponse("Syntax: !expl <Begriff>")
     end
