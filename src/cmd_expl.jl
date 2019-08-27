@@ -112,13 +112,14 @@ function expl(req::OutgoingWebhookRequest)::OutgoingWebhookResponse
         end
     end
 
-    if index == 0
+    count = length(entries)
+    if count == 0
         text = "Ich habe leider keinen Eintrag gefunden."
     else
-        if index == 1
+        if count == 1
             text = "Ich habe den folgenden Eintrag gefunden:"
         else
-            text = "Ich habe die folgenden " * string(index) * " Einträge gefunden:"
+            text = "Ich habe die folgenden " * string(count) * " Einträge gefunden:"
         end
         text = text * "\n```\n" * join(entries, '\n') * "\n```"
     end
