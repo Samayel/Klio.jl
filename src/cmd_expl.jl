@@ -13,12 +13,13 @@ function _expl_db()::SQLite.DB
     global _expl_db_initialized
     if !_expl_db_initialized
         # id must be AUTOINCREMENT because monotonicity is required for some queries
+        # nick is NULL for some old entries
         # datetime (unix timestamp) is NULL for some old entries
         # item_norm is a normalized variant of item
         SQLite.execute!(db, """
             CREATE TABLE IF NOT EXISTS t_expl (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                nick TEXT NOT NULL,
+                nick TEXT,
                 item TEXT NOT NULL,
                 item_norm TEXT NOT NULL,
                 expl TEXT NOT NULL,
@@ -90,12 +91,18 @@ function expl(req::OutgoingWebhookRequest)::OutgoingWebhookResponse
         ]))
 
         index = index + 1
-        entry = nt.:item * "[" * string(index) * "]: " * replace(nt.:expl, r"[[:space:]]" => " ") * " (" * nt.:nick
+        entry = nt.:item * "[" * string(index) * "]: " * replace(nt.:expl, r"[[:space:]]" => " ")
+        extra = []
+        if !ismissing(nt.:nick)
+            push!(extra, nt.:nick)
+        end
         if !ismissing(nt.:datetime)
             datetime = Dates.format(ZonedDateTime(Dates.epochms2datetime(nt.:datetime), settings.expl_time_zone, from_utc = true), settings.expl_datetime_format)
-            entry = entry * ", " * datetime
+            push!(extra, datetime)
         end
-        entry = entry * ")"
+        if !isempty(extra)
+            entry = entry * " (" * join(extra, ", ") * ")"
+        end
 
         push!(entries, entry)
     end
