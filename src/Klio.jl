@@ -25,7 +25,7 @@ mutable struct Settings
         server_port = 8000,
         server_verbose = true,
         expl_sqlite_file = "/tmp/expl.sqlite",
-        expl_time_zone = TimeZone("Europe/Berlin"),
+        expl_time_zone = tz"Europe/Berlin",
         expl_datetime_format = dateformat"dd.mm.YYYY HH:MM") =
             new(server_host, server_port, server_verbose, expl_sqlite_file, expl_time_zone, expl_datetime_format)
 end
