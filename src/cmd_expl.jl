@@ -23,7 +23,8 @@ function _expl_db()::SQLite.DB
                 item TEXT NOT NULL,
                 item_norm TEXT NOT NULL,
                 expl TEXT NOT NULL,
-                datetime INTEGER
+                datetime INTEGER,
+                enabled INTEGER NOT NULL
             )
             """)
 
@@ -53,13 +54,14 @@ function add(req::OutgoingWebhookRequest)::OutgoingWebhookResponse
 
     db = _expl_db()
 
-    SQLite.Query(db, "INSERT INTO t_expl(nick, item, item_norm, expl, datetime) VALUES (:nick, :item, :item_norm, :expl, :datetime)",
+    SQLite.Query(db, "INSERT INTO t_expl(nick, item, item_norm, expl, datetime, enabled) VALUES (:nick, :item, :item_norm, :expl, :datetime, :enabled)",
         values = Dict{Symbol, Any}([
             :nick => req.user_name,
             :item => item,
             :item_norm => item_norm,
             :expl => expl,
-            :datetime => Dates.datetime2epochms(Dates.now(Dates.UTC))
+            :datetime => Dates.datetime2epochms(Dates.now(Dates.UTC)),
+            :enabled => 1
         ]))
 
     local count
@@ -85,26 +87,29 @@ function expl(req::OutgoingWebhookRequest)::OutgoingWebhookResponse
 
     entries = []
     index = 0
-    for nt in SQLite.Query(db, "SELECT nick, item, expl, datetime FROM t_expl WHERE item_norm = :item_norm ORDER BY id",
+    for nt in SQLite.Query(db, "SELECT nick, item, expl, datetime, enabled FROM t_expl WHERE item_norm = :item_norm ORDER BY id",
         values = Dict{Symbol, Any}([
             :item_norm => item_norm,
         ]))
 
         index = index + 1
-        entry = nt.:item * "[" * string(index) * "]: " * replace(nt.:expl, r"[[:space:]]" => " ")
-        extra = []
-        if !ismissing(nt.:nick)
-            push!(extra, nt.:nick)
-        end
-        if !ismissing(nt.:datetime)
-            datetime = Dates.format(ZonedDateTime(Dates.epochms2datetime(nt.:datetime), settings.expl_time_zone, from_utc = true), settings.expl_datetime_format)
-            push!(extra, datetime)
-        end
-        if !isempty(extra)
-            entry = entry * " (" * join(extra, ", ") * ")"
-        end
 
-        push!(entries, entry)
+        if nt.:enabled != 0
+            entry = nt.:item * "[" * string(index) * "]: " * replace(nt.:expl, r"[[:space:]]" => " ")
+            extra = []
+            if !ismissing(nt.:nick)
+                push!(extra, nt.:nick)
+            end
+            if !ismissing(nt.:datetime)
+                datetime = Dates.format(ZonedDateTime(Dates.epochms2datetime(nt.:datetime), settings.expl_time_zone, from_utc = true), settings.expl_datetime_format)
+                push!(extra, datetime)
+            end
+            if !isempty(extra)
+                entry = entry * " (" * join(extra, ", ") * ")"
+            end
+
+            push!(entries, entry)
+        end
     end
 
     if index == 0
