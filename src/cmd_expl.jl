@@ -2,6 +2,10 @@ using SQLite
 using Dates
 using TimeZones
 using Unicode
+using StringEncodings
+
+const MAX_UTF16_LENGTH_ITEM = 50
+const MAX_UTF16_LENGTH_EXPL = 200
 
 _expl_db_initialized = false
 
@@ -44,12 +48,24 @@ _expl_item_normalize(item) = Unicode.normalize(item,
     stripcc = true,
     stable = true)
 
+# number of 16-bit words in the UTF-16 encoding of the given string
+# string(s) is required because StringEncodings doesn't support SubString
+_utf16_length(s) = length(encode(string(s), enc"UTF-16BE")) >> 1
+
 function add(req::OutgoingWebhookRequest)::OutgoingWebhookResponse
     parts = split(rstrip(req.text), limit = 3)
     if length(parts) !== 3
         return OutgoingWebhookResponse("Syntax: !add <Begriff> <Erklärung>")
     end
     _, item, expl = parts
+
+    if _utf16_length(item) > MAX_UTF16_LENGTH_ITEM
+        return OutgoingWebhookResponse("Tut mir leid, der Begriff ist leider zu lang.")
+    end
+    if _utf16_length(expl) > MAX_UTF16_LENGTH_EXPL
+        return OutgoingWebhookResponse("Tut mir leid, die Erklärung ist leider zu lang.")
+    end
+
     item_norm = _expl_item_normalize(item)
 
     db = _expl_db()
