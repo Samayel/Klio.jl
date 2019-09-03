@@ -6,6 +6,7 @@ using StringEncodings
 
 const MAX_UTF16_LENGTH_ITEM = 50
 const MAX_UTF16_LENGTH_EXPL = 200
+const MAX_EXPL_COUNT = 50
 
 _expl_db_initialized = false
 
@@ -134,8 +135,11 @@ function expl(req::OutgoingWebhookRequest)::OutgoingWebhookResponse
     else
         if count == 1
             text = "Ich habe den folgenden Eintrag gefunden:"
-        else
+        elseif count <= MAX_EXPL_COUNT
             text = "Ich habe die folgenden " * string(count) * " Einträge gefunden:"
+        else
+            text = "Ich habe " * string(count) * " Einträge gefunden, das sind die letzten " * string(MAX_EXPL_COUNT) * ":"
+            entries = entries[end-MAX_EXPL_COUNT+1:end]
         end
         text = text * "\n```\n" * join(entries, '\n') * "\n```"
     end
