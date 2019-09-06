@@ -81,15 +81,18 @@ function add(req::OutgoingWebhookRequest)::OutgoingWebhookResponse
             :enabled => 1
         ]))
 
-    local count
-    for nt in SQLite.Query(db, "SELECT count(1) cnt FROM t_expl WHERE item_norm = :item_norm AND id <= (SELECT id FROM t_expl WHERE rowid = last_insert_rowid())",
+    permanent_index = normal_index = 1
+    for nt in SQLite.Query(db, "SELECT enabled, count(1) FROM t_expl WHERE item_norm = :item_norm AND id < (SELECT id FROM t_expl WHERE rowid = last_insert_rowid()) GROUP BY 1",
         values = Dict{Symbol, Any}([
             :item_norm => item_norm,
         ]))
-        count = nt[1]
+        permanent_index = permanent_index + nt[2]
+        if nt[1] != 0
+            normal_index = normal_index + nt[2]
+        end
     end
 
-    return OutgoingWebhookResponse("Ich habe den neuen Eintrag " * item * "[" * string(count) * "] hinzugefügt.")
+    return OutgoingWebhookResponse("Ich habe den neuen Eintrag $item[$normal_index/p$permanent_index] hinzugefügt.")
 end
 
 function expl(req::OutgoingWebhookRequest)::OutgoingWebhookResponse
@@ -103,30 +106,29 @@ function expl(req::OutgoingWebhookRequest)::OutgoingWebhookResponse
     db = _expl_db()
 
     entries = []
-    index = 0
+    permanent_index = normal_index = 1
     for nt in SQLite.Query(db, "SELECT nick, item, expl, datetime, enabled FROM t_expl WHERE item_norm = :item_norm ORDER BY id",
         values = Dict{Symbol, Any}([
             :item_norm => item_norm,
         ]))
 
-        index = index + 1
-
         if nt.:enabled != 0
-            entry = nt.:item * "[" * string(index) * "]: " * replace(nt.:expl, r"[[:space:]]" => " ")
-            extra = []
+            text = replace(nt.:expl, r"[[:space:]]" => " ")
+            metadata = []
             if !ismissing(nt.:nick)
-                push!(extra, nt.:nick)
+                push!(metadata, nt.:nick)
             end
             if !ismissing(nt.:datetime)
                 datetime = Dates.format(ZonedDateTime(Dates.epochms2datetime(nt.:datetime), settings.expl_time_zone, from_utc = true), settings.expl_datetime_format)
-                push!(extra, datetime)
-            end
-            if !isempty(extra)
-                entry = entry * " (" * join(extra, ", ") * ")"
+                push!(metadata, datetime)
             end
 
-            push!(entries, entry)
+            push!(entries, tuple(nt.:item, normal_index, permanent_index, text, metadata))
+
+            normal_index = normal_index + 1
         end
+
+        permanent_index = permanent_index + 1
     end
 
     count = length(entries)
@@ -136,15 +138,21 @@ function expl(req::OutgoingWebhookRequest)::OutgoingWebhookResponse
         if count == 1
             text = "Ich habe den folgenden Eintrag gefunden:"
         elseif count <= MAX_EXPL_COUNT
-            text = "Ich habe die folgenden " * string(count) * " Einträge gefunden:"
+            text = "Ich habe die folgenden $count Einträge gefunden:"
         else
-            text = "Ich habe " * string(count) * " Einträge gefunden, das sind die letzten " * string(MAX_EXPL_COUNT) * ":"
+            text = "Ich habe $count Einträge gefunden, das sind die letzten $MAX_EXPL_COUNT:"
             entries = entries[end-MAX_EXPL_COUNT+1:end]
         end
-        text = text * "\n```\n" * join(entries, '\n') * "\n```"
+
+        lines = map(entries) do (item, index, permanent_index, text, metadata)
+            metadata_text = isempty(metadata) ? "" : " (" * join(metadata, ", ") * ')'
+            "$item[$index]: $text$metadata_text"
+        end
+
+        text = "$text\n```\n" * join(lines, '\n') * "\n```"
     end
 
-    title = "!expl " * item
+    title = "!expl $item"
     fallback = "Es tut mir leid, dein Client kann die Ergebnisse von !expl leider nicht anzeigen."
 
     return OutgoingWebhookResponse([MessageAttachment(fallback, title, text)])
