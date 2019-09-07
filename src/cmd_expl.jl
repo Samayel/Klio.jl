@@ -92,28 +92,152 @@ function add(req::OutgoingWebhookRequest)::OutgoingWebhookResponse
         end
     end
 
-    return OutgoingWebhookResponse("Ich habe den neuen Eintrag $item[$normal_index/p$permanent_index] hinzugefügt.")
+    return OutgoingWebhookResponse("Ich habe den neuen Eintrag $item[$normal_index] hinzugefügt.")
 end
 
-function expl(req::OutgoingWebhookRequest)::OutgoingWebhookResponse
-    parts = split(rstrip(req.text), limit = 3)
-    if length(parts) !== 2
-        return OutgoingWebhookResponse("Syntax: !expl <Begriff>")
+abstract type ExplIndex{T<:Unsigned} end
+
+struct NormalExplIndex{T} <: ExplIndex{T}
+    index::T
+end
+
+struct TailExplIndex{T} <: ExplIndex{T}
+    index::T
+end
+
+struct PermanentExplIndex{T} <: ExplIndex{T}
+    index::T
+end
+
+# define strict partial order on ExplIndex subtypes
+Base.:<(a::NormalExplIndex, b::NormalExplIndex) = a.index < b.index
+Base.:<(a::TailExplIndex, b::TailExplIndex) = a.index > b.index # tail index is descending
+Base.:<(a::PermanentExplIndex, b::PermanentExplIndex) = a.index < b.index
+Base.:<(::ExplIndex, ::ExplIndex) = false # fallback for unrelated index types
+
+# allows using a single ExplIndex (or subtype) with broadcasting
+Base.length(::ExplIndex) = 1
+Base.iterate(i::ExplIndex) = (i, nothing)
+Base.iterate(::ExplIndex, ::Nothing) = nothing
+
+abstract type ExplIndexSelector{T} end
+
+struct SingleExplIndexSelector{T} <: ExplIndexSelector{T}
+    index::ExplIndex{T}
+end
+
+struct RangeExplIndexSelector{T} <: ExplIndexSelector{T}
+    start::ExplIndex{T}
+    stop::ExplIndex{T}
+end
+
+struct AllExplIndexSelector{T} <: ExplIndexSelector{T}
+end
+
+function Base.tryparse(::Type{NormalExplIndex{T}}, s::AbstractString) where {T}
+    index = tryparse(T, s)
+    if isnothing(index) || index == 0
+        return nothing
     end
-    _, item = parts
+    return NormalExplIndex{T}(index)
+end
+
+function Base.tryparse(::Type{TailExplIndex{T}}, s::AbstractString) where {T}
+    if !startswith(s, '-')
+        return nothing
+    end
+    index = tryparse(T, s[2:end])
+    if isnothing(index) || index == 0
+        return nothing
+    end
+    return TailExplIndex{T}(index)
+end
+
+function Base.tryparse(::Type{PermanentExplIndex{T}}, s::AbstractString) where {T}
+    if !startswith(s, 'p')
+        return nothing
+    end
+    index = tryparse(T, s[2:end])
+    if isnothing(index) || index == 0
+        return nothing
+    end
+    return PermanentExplIndex{T}(index)
+end
+
+function Base.tryparse(::Type{ExplIndex{T}}, s::AbstractString) where {T}
+    for t in [NormalExplIndex{T}, TailExplIndex{T}, PermanentExplIndex{T}]
+        i = tryparse(t, s)
+        if !isnothing(i)
+            return i
+        end
+    end
+    return nothing
+end
+
+function Base.tryparse(::Type{ExplIndexSelector{T}}, s::AbstractString) where {T}
+    p = split(s, ':', limit = 3)
+    if length(p) > 2
+        return nothing
+    end
+
+    start = tryparse(ExplIndex{T}, p[1])
+    if isnothing(start)
+        return nothing
+    end
+
+    if length(p) == 1
+        return SingleExplIndexSelector{T}(start)
+    end
+
+    stop = tryparse(ExplIndex{T}, p[2])
+    if isnothing(stop)
+        return nothing
+    end
+
+    return RangeExplIndexSelector{T}(start, stop)
+end
+
+struct ExplEntry{T}
+    text::AbstractString
+    indexes::Vector{ExplIndex{T}}
+end
+
+# allows using a single ExplEntry with broadcasting
+Base.length(::ExplEntry) = 1
+Base.iterate(i::ExplEntry) = (i, nothing)
+Base.iterate(::ExplEntry, ::Nothing) = nothing
+
+# checks if an ExplIndexSelector selects an ExplEntry
+selects(s::SingleExplIndexSelector{T}, e::ExplEntry{T}) where {T} = any(s.index .== e.indexes)
+selects(s::RangeExplIndexSelector{T}, e::ExplEntry{T}) where {T} = any(s.start .<= e.indexes) && any(e.indexes .<= s.stop)
+selects(::AllExplIndexSelector{T}, ::ExplEntry{T}) where {T} = true
+
+function expl(req::OutgoingWebhookRequest)::OutgoingWebhookResponse
+    parts = split(req.text)
+    selectors = tryparse.(ExplIndexSelector{UInt64}, parts[3:end])
+    if length(parts) < 2 || any(selectors .== nothing)
+        return OutgoingWebhookResponse("Syntax: !expl <Begriff> { <Index> | <VonIndex>:<BisIndex> }")
+    end
+
+    # default range (all)
+    if isempty(selectors)
+        selectors = [AllExplIndexSelector{UInt64}()]
+    end
+
+    item = parts[2]
     item_norm = _expl_item_normalize(item)
 
     db = _expl_db()
 
     entries = []
-    permanent_index = normal_index = 1
+    permanent_index = normal_index = UInt64(1)
     for nt in SQLite.Query(db, "SELECT nick, item, expl, datetime, enabled FROM t_expl WHERE item_norm = :item_norm ORDER BY id",
         values = Dict{Symbol, Any}([
             :item_norm => item_norm,
         ]))
 
         if nt.:enabled != 0
-            text = replace(nt.:expl, r"[[:space:]]" => " ")
+            text = "$(nt.item)[$normal_index]: " * replace(nt.:expl, r"[[:space:]]" => " ")
             metadata = []
             if !ismissing(nt.:nick)
                 push!(metadata, nt.:nick)
@@ -122,8 +246,13 @@ function expl(req::OutgoingWebhookRequest)::OutgoingWebhookResponse
                 datetime = Dates.format(ZonedDateTime(Dates.epochms2datetime(nt.:datetime), settings.expl_time_zone, from_utc = true), settings.expl_datetime_format)
                 push!(metadata, datetime)
             end
+            if !isempty(metadata)
+                text = "$text (" * join(metadata, ", ") * ')'
+            end
 
-            push!(entries, tuple(nt.:item, normal_index, permanent_index, text, metadata))
+            indexes = [NormalExplIndex(normal_index), PermanentExplIndex(permanent_index)]
+
+            push!(entries, ExplEntry(text, indexes))
 
             normal_index = normal_index + 1
         end
@@ -131,7 +260,17 @@ function expl(req::OutgoingWebhookRequest)::OutgoingWebhookResponse
         permanent_index = permanent_index + 1
     end
 
-    count = length(entries)
+    # determine tail indexes
+    tail_index = UInt64(length(entries))
+    for entry in entries
+        push!(entry.indexes, TailExplIndex(tail_index))
+        tail_index = tail_index - 1
+    end
+
+    # apply selectors
+    selected = filter(entry -> any(selects.(selectors, entry)), entries)
+
+    count = length(selected)
     if count == 0
         text = "Ich habe leider keinen Eintrag gefunden."
     else
@@ -141,18 +280,13 @@ function expl(req::OutgoingWebhookRequest)::OutgoingWebhookResponse
             text = "Ich habe die folgenden $count Einträge gefunden:"
         else
             text = "Ich habe $count Einträge gefunden, das sind die letzten $MAX_EXPL_COUNT:"
-            entries = entries[end-MAX_EXPL_COUNT+1:end]
+            selected = selected[end-MAX_EXPL_COUNT+1:end]
         end
 
-        lines = map(entries) do (item, index, permanent_index, text, metadata)
-            metadata_text = isempty(metadata) ? "" : " (" * join(metadata, ", ") * ')'
-            "$item[$index]: $text$metadata_text"
-        end
-
-        text = "$text\n```\n" * join(lines, '\n') * "\n```"
+        text = "$text\n```\n" * join(map(entry -> entry.text, selected), '\n') * "\n```"
     end
 
-    title = "!expl $item"
+    title = rstrip("!expl $item " * join(parts[3:end], ' '))
     fallback = "Es tut mir leid, dein Client kann die Ergebnisse von !expl leider nicht anzeigen."
 
     return OutgoingWebhookResponse([MessageAttachment(fallback, title, text)])
