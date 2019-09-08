@@ -110,18 +110,18 @@ function add(req::OutgoingWebhookRequest)::OutgoingWebhookResponse
     return OutgoingWebhookResponse("Ich habe den neuen Eintrag mit Index $normal_index/p$permanent_index hinzugefügt.")
 end
 
-abstract type ExplIndex{T<:Unsigned} end
+abstract type ExplIndex end
 
-struct NormalExplIndex{T} <: ExplIndex{T}
-    index::T
+struct NormalExplIndex <: ExplIndex
+    index::Int64
 end
 
-struct TailExplIndex{T} <: ExplIndex{T}
-    index::T
+struct TailExplIndex <: ExplIndex
+    index::Int64
 end
 
-struct PermanentExplIndex{T} <: ExplIndex{T}
-    index::T
+struct PermanentExplIndex <: ExplIndex
+    index::Int64
 end
 
 # string representation, used by join and string interpolation
@@ -140,52 +140,52 @@ Base.length(::ExplIndex) = 1
 Base.iterate(i::ExplIndex) = (i, nothing)
 Base.iterate(::ExplIndex, ::Nothing) = nothing
 
-abstract type ExplIndexSelector{T} end
+abstract type ExplIndexSelector end
 
-struct SingleExplIndexSelector{T} <: ExplIndexSelector{T}
-    index::ExplIndex{T}
+struct SingleExplIndexSelector <: ExplIndexSelector
+    index::ExplIndex
 end
 
-struct RangeExplIndexSelector{T} <: ExplIndexSelector{T}
-    start::ExplIndex{T}
-    stop::ExplIndex{T}
+struct RangeExplIndexSelector <: ExplIndexSelector
+    start::ExplIndex
+    stop::ExplIndex
 end
 
-struct AllExplIndexSelector{T} <: ExplIndexSelector{T}
+struct AllExplIndexSelector <: ExplIndexSelector
 end
 
-function Base.tryparse(::Type{NormalExplIndex{T}}, s::AbstractString) where {T}
-    index = tryparse(T, s)
-    if isnothing(index) || index == 0
+function Base.tryparse(t::Type{NormalExplIndex}, s::AbstractString)
+    index = tryparse(fieldtype(t, :index), s)
+    if isnothing(index) || index <= 0
         return nothing
     end
-    return NormalExplIndex{T}(index)
+    return NormalExplIndex(index)
 end
 
-function Base.tryparse(::Type{TailExplIndex{T}}, s::AbstractString) where {T}
+function Base.tryparse(t::Type{TailExplIndex}, s::AbstractString)
     if !startswith(s, '-')
         return nothing
     end
-    index = tryparse(T, s[2:end])
-    if isnothing(index) || index == 0
+    index = tryparse(fieldtype(t, :index), s[2:end])
+    if isnothing(index) || index <= 0
         return nothing
     end
-    return TailExplIndex{T}(index)
+    return TailExplIndex(index)
 end
 
-function Base.tryparse(::Type{PermanentExplIndex{T}}, s::AbstractString) where {T}
+function Base.tryparse(t::Type{PermanentExplIndex}, s::AbstractString)
     if !startswith(s, 'p')
         return nothing
     end
-    index = tryparse(T, s[2:end])
-    if isnothing(index) || index == 0
+    index = tryparse(fieldtype(t, :index), s[2:end])
+    if isnothing(index) || index <= 0
         return nothing
     end
-    return PermanentExplIndex{T}(index)
+    return PermanentExplIndex(index)
 end
 
-function Base.tryparse(::Type{ExplIndex{T}}, s::AbstractString) where {T}
-    for t in [NormalExplIndex{T}, TailExplIndex{T}, PermanentExplIndex{T}]
+function Base.tryparse(::Type{ExplIndex}, s::AbstractString)
+    for t in [NormalExplIndex, TailExplIndex, PermanentExplIndex]
         i = tryparse(t, s)
         if !isnothing(i)
             return i
@@ -194,32 +194,32 @@ function Base.tryparse(::Type{ExplIndex{T}}, s::AbstractString) where {T}
     return nothing
 end
 
-function Base.tryparse(::Type{ExplIndexSelector{T}}, s::AbstractString) where {T}
+function Base.tryparse(::Type{ExplIndexSelector}, s::AbstractString)
     p = split(s, ':', limit = 3)
     if length(p) > 2
         return nothing
     end
 
-    start = tryparse(ExplIndex{T}, p[1])
+    start = tryparse(ExplIndex, p[1])
     if isnothing(start)
         return nothing
     end
 
     if length(p) == 1
-        return SingleExplIndexSelector{T}(start)
+        return SingleExplIndexSelector(start)
     end
 
-    stop = tryparse(ExplIndex{T}, p[2])
+    stop = tryparse(ExplIndex, p[2])
     if isnothing(stop)
         return nothing
     end
 
-    return RangeExplIndexSelector{T}(start, stop)
+    return RangeExplIndexSelector(start, stop)
 end
 
-struct ExplEntry{T}
+struct ExplEntry
     item::AbstractString
-    indexes::Vector{ExplIndex{T}}
+    indexes::Vector{ExplIndex}
     text::AbstractString
 end
 
@@ -232,32 +232,32 @@ Base.iterate(i::ExplEntry) = (i, nothing)
 Base.iterate(::ExplEntry, ::Nothing) = nothing
 
 # checks if an ExplIndexSelector selects an ExplEntry
-selects(s::SingleExplIndexSelector{T}, e::ExplEntry{T}) where {T} = any(s.index .== e.indexes)
-selects(s::RangeExplIndexSelector{T}, e::ExplEntry{T}) where {T} = any(s.start .<= e.indexes) && any(e.indexes .<= s.stop)
-selects(::AllExplIndexSelector{T}, ::ExplEntry{T}) where {T} = true
+selects(s::SingleExplIndexSelector, e::ExplEntry) = any(s.index .== e.indexes)
+selects(s::RangeExplIndexSelector, e::ExplEntry) = any(s.start .<= e.indexes) && any(e.indexes .<= s.stop)
+selects(::AllExplIndexSelector, ::ExplEntry) = true
 
 # unique ExplIndex subtypes used by an ExplIndexSelector
 indextypes(s::SingleExplIndexSelector) = [typeof(s.index)]
 indextypes(s::RangeExplIndexSelector) = unique([typeof(s.start), typeof(s.stop)])
-indextypes(s::AllExplIndexSelector{T}) where {T} = [NormalExplIndex{T}]
+indextypes(s::AllExplIndexSelector) = [NormalExplIndex]
 
 function expl(req::OutgoingWebhookRequest)::OutgoingWebhookResponse
     parts = split(req.text)
-    selectors = tryparse.(ExplIndexSelector{UInt64}, parts[3:end])
+    selectors = tryparse.(ExplIndexSelector, parts[3:end])
     if length(parts) < 2 || any(selectors .== nothing)
         return OutgoingWebhookResponse("Syntax: $(parts[1]) <Begriff> { <Index> | <VonIndex>:<BisIndex> }")
     end
 
     # default range (all)
     if isempty(selectors)
-        selectors = [AllExplIndexSelector{UInt64}()]
+        selectors = [AllExplIndexSelector()]
     end
 
     # determine index types used in selectors
     index_types = union(map(indextypes, selectors)...)
-    use_normal_index = NormalExplIndex{UInt64} in index_types
-    use_permanent_index = PermanentExplIndex{UInt64} in index_types
-    use_tail_index = TailExplIndex{UInt64} in index_types
+    use_normal_index = NormalExplIndex in index_types
+    use_permanent_index = PermanentExplIndex in index_types
+    use_tail_index = TailExplIndex in index_types
 
     # show normal index if no others are shown
     if !use_permanent_index && !use_tail_index
@@ -289,15 +289,15 @@ function expl(req::OutgoingWebhookRequest)::OutgoingWebhookResponse
             text = "$text (" * join(metadata, ", ") * ')'
         end
 
-        indexes = Vector{ExplIndex{UInt64}}()
+        indexes = Vector{ExplIndex}()
         if use_normal_index
-            push!(indexes, NormalExplIndex{UInt64}(nt.:normal_index))
+            push!(indexes, NormalExplIndex(nt.:normal_index))
         end
         if use_permanent_index
-            push!(indexes, PermanentExplIndex{UInt64}(nt.:permanent_index))
+            push!(indexes, PermanentExplIndex(nt.:permanent_index))
         end
         if use_tail_index
-            push!(indexes, TailExplIndex{UInt64}(nt.:tail_index))
+            push!(indexes, TailExplIndex(nt.:tail_index))
         end
 
         push!(entries, ExplEntry(nt.:item, indexes, text))
