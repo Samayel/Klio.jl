@@ -320,8 +320,5 @@ function expl(req::OutgoingWebhookRequest)::OutgoingWebhookResponse
         text = "$text\n```\n" * join(selected, '\n') * "\n```"
     end
 
-    title = join(parts, ' ')
-    fallback = "Es tut mir leid, dein Client kann die Ergebnisse von $(parts[1]) leider nicht anzeigen."
-
-    return OutgoingWebhookResponse([MessageAttachment(fallback, title, text)])
+    return OutgoingWebhookResponse(text)
 end
