@@ -46,6 +46,18 @@ function init_db()::SQLite.DB
     return db
 end
 
+# common query to determine the different indexes
+# returns all entries (including disabled ones) unordered
+const QUERY_BY_ITEM_NORM = """
+	SELECT rowid, id, nick, item, item_norm, expl, datetime, enabled,
+		   CASE WHEN enabled <> 0 THEN ROW_NUMBER() OVER (PARTITION BY enabled <> 0 ORDER BY id) END normal_index,
+		   ROW_NUMBER() OVER (ORDER BY id) permanent_index,
+           CASE WHEN enabled <> 0 THEN ROW_NUMBER() OVER (PARTITION BY enabled <> 0 ORDER BY id DESC) END tail_index
+	FROM t_expl WHERE item_norm = :item_norm
+"""
+
+const QUERY_BY_ITEM_NORM_PARAM = :item_norm
+
 # normalize a string (expl item) for easy searchability
 item_normalize(item) = Unicode.normalize(item,
     compat = true,
@@ -86,15 +98,13 @@ function add(req::OutgoingWebhookRequest)::OutgoingWebhookResponse
             :enabled => 1
         ]))
 
-    permanent_index = normal_index = 1
-    for nt in SQLite.Query(db, "SELECT enabled, count(1) FROM t_expl WHERE item_norm = :item_norm AND id < (SELECT id FROM t_expl WHERE rowid = last_insert_rowid()) GROUP BY 1",
+    permanent_index = normal_index = 0
+    for nt in SQLite.Query(db, "SELECT normal_index, permanent_index FROM ($QUERY_BY_ITEM_NORM) WHERE rowid = last_insert_rowid()",
         values = Dict{Symbol, Any}([
-            :item_norm => item_norm,
+            QUERY_BY_ITEM_NORM_PARAM => item_norm,
         ]))
-        permanent_index = permanent_index + nt[2]
-        if nt[1] != 0
-            normal_index = normal_index + nt[2]
-        end
+        normal_index = nt.:normal_index
+        permanent_index = nt.:permanent_index
     end
 
     return OutgoingWebhookResponse("Ich habe den neuen Eintrag mit Index $normal_index/p$permanent_index hinzugefügt.")
@@ -260,50 +270,37 @@ function expl(req::OutgoingWebhookRequest)::OutgoingWebhookResponse
     db = init_db()
 
     entries = []
-    permanent_index = normal_index = UInt64(1)
-    for nt in SQLite.Query(db, "SELECT nick, item, expl, datetime, enabled FROM t_expl WHERE item_norm = :item_norm ORDER BY id",
+    for nt in SQLite.Query(db, "SELECT * FROM ($QUERY_BY_ITEM_NORM) WHERE enabled <> 0 ORDER BY id",
         values = Dict{Symbol, Any}([
-            :item_norm => item_norm,
+            QUERY_BY_ITEM_NORM_PARAM => item_norm,
         ]))
 
-        if nt.:enabled != 0
-            text = replace(nt.:expl, r"[[:space:]]" => " ")
+        text = replace(nt.:expl, r"[[:space:]]" => " ")
 
-            metadata = []
-            if !ismissing(nt.:nick)
-                push!(metadata, nt.:nick)
-            end
-            if !ismissing(nt.:datetime)
-                datetime = Dates.format(ZonedDateTime(Dates.epochms2datetime(nt.:datetime), Klio.settings.expl_time_zone, from_utc = true), Klio.settings.expl_datetime_format)
-                push!(metadata, datetime)
-            end
-            if !isempty(metadata)
-                text = "$text (" * join(metadata, ", ") * ')'
-            end
-
-            indexes = Vector{ExplIndex{UInt64}}()
-            if use_normal_index
-                push!(indexes, NormalExplIndex(normal_index))
-            end
-            if use_permanent_index
-                push!(indexes, PermanentExplIndex(permanent_index))
-            end
-
-            push!(entries, ExplEntry(nt.:item, indexes, text))
-
-            normal_index = normal_index + 1
+        metadata = []
+        if !ismissing(nt.:nick)
+            push!(metadata, nt.:nick)
+        end
+        if !ismissing(nt.:datetime)
+            datetime = Dates.format(ZonedDateTime(Dates.epochms2datetime(nt.:datetime), Klio.settings.expl_time_zone, from_utc = true), Klio.settings.expl_datetime_format)
+            push!(metadata, datetime)
+        end
+        if !isempty(metadata)
+            text = "$text (" * join(metadata, ", ") * ')'
         end
 
-        permanent_index = permanent_index + 1
-    end
-
-    # determine tail indexes
-    if use_tail_index
-        tail_index = UInt64(length(entries))
-        for entry in entries
-            push!(entry.indexes, TailExplIndex(tail_index))
-            tail_index = tail_index - 1
+        indexes = Vector{ExplIndex{UInt64}}()
+        if use_normal_index
+            push!(indexes, NormalExplIndex{UInt64}(nt.:normal_index))
         end
+        if use_permanent_index
+            push!(indexes, PermanentExplIndex{UInt64}(nt.:permanent_index))
+        end
+        if use_tail_index
+            push!(indexes, TailExplIndex{UInt64}(nt.:tail_index))
+        end
+
+        push!(entries, ExplEntry(nt.:item, indexes, text))
     end
 
     # apply selectors
