@@ -98,16 +98,17 @@ function add(req::OutgoingWebhookRequest)::OutgoingWebhookResponse
             :enabled => 1
         ]))
 
-    permanent_index = normal_index = 0
-    for nt in SQLite.Query(db, "SELECT normal_index, permanent_index FROM ($QUERY_BY_ITEM_NORM) WHERE rowid = last_insert_rowid()",
+    permanent_index = normal_index = tail_index = 0
+    for nt in SQLite.Query(db, "SELECT normal_index, permanent_index, tail_index FROM ($QUERY_BY_ITEM_NORM) WHERE rowid = last_insert_rowid()",
         values = Dict{Symbol, Any}([
             QUERY_BY_ITEM_NORM_PARAM => item_norm,
         ]))
         normal_index = nt.:normal_index
         permanent_index = nt.:permanent_index
+        tail_index = nt.:tail_index
     end
 
-    return OutgoingWebhookResponse("Ich habe den neuen Eintrag mit Index $normal_index/p$permanent_index hinzugefügt.")
+    return OutgoingWebhookResponse("Ich habe den neuen Eintrag mit Index [$normal_index/p$permanent_index/-$tail_index] hinzugefügt.")
 end
 
 abstract type ExplIndex end
