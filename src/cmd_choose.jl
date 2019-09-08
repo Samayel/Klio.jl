@@ -1,3 +1,7 @@
+module Choose
+
+using ..Mattermost
+
 function choose(req::OutgoingWebhookRequest)::OutgoingWebhookResponse
     options = split(req.text)
     # Weg mit dem !choose
@@ -22,4 +26,6 @@ function choose(req::OutgoingWebhookRequest)::OutgoingWebhookResponse
     end
 
     return OutgoingWebhookResponse(reply)
+end
+
 end

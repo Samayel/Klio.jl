@@ -1,3 +1,9 @@
+module Mattermost
+
+using JSON2
+
+export OutgoingWebhookRequest, OutgoingWebhookResponse, OutgoingWebhookResponseType, MessageAttachment
+
 """
     OutgoingWebhookRequest
 Request type for outgoing webhooks. This is just a subset of the attributes.
@@ -55,4 +61,6 @@ JSON2.@format OutgoingWebhookResponse begin
     text => (omitempty=true,)
     response_type => (omitempty=true,)
     attachments => (omitempty=true,)
+end
+
 end

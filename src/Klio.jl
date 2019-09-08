@@ -2,6 +2,8 @@ module Klio
 
 using HTTP
 using Sockets
+using TimeZones
+using Dates
 
 include("json_handler.jl")
 include("mattermost_types.jl")
@@ -11,6 +13,9 @@ include("cmd_choose.jl")
 include("cmd_time.jl")
 
 include("cmd_expl.jl")
+
+using .Mattermost
+using .JSON
 
 mutable struct Settings
     server_host::Sockets.IPAddr # HTTP server's IP Address to listen on
@@ -35,12 +40,12 @@ settings = Settings()
 function run()
     klioRouter = HTTP.Router()
 
-    HTTP.@register(klioRouter, "POST", "/calc", JSONHandler{OutgoingWebhookRequest}(calc))
-    HTTP.@register(klioRouter, "POST", "/choose", JSONHandler{OutgoingWebhookRequest}(choose))
-    HTTP.@register(klioRouter, "POST", "/time", JSONHandler{OutgoingWebhookRequest}(time))
+    HTTP.@register(klioRouter, "POST", "/calc", JSONHandler{OutgoingWebhookRequest}(Calc.calc))
+    HTTP.@register(klioRouter, "POST", "/choose", JSONHandler{OutgoingWebhookRequest}(Choose.choose))
+    HTTP.@register(klioRouter, "POST", "/time", JSONHandler{OutgoingWebhookRequest}(Time.time))
 
-    HTTP.@register(klioRouter, "POST", "/add", JSONHandler{OutgoingWebhookRequest}(add))
-    HTTP.@register(klioRouter, "POST", "/expl", JSONHandler{OutgoingWebhookRequest}(expl))
+    HTTP.@register(klioRouter, "POST", "/add", JSONHandler{OutgoingWebhookRequest}(Expl.add))
+    HTTP.@register(klioRouter, "POST", "/expl", JSONHandler{OutgoingWebhookRequest}(Expl.expl))
 
     HTTP.serve(klioRouter, settings.server_host, settings.server_port, verbose = settings.server_verbose)
 end

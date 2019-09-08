@@ -1,22 +1,27 @@
+module Expl
+
 using SQLite
 using Dates
 using TimeZones
 using Unicode
 using StringEncodings
 
+using ...Klio
+using ..Mattermost
+
 const MAX_UTF16_LENGTH_ITEM = 50
 const MAX_UTF16_LENGTH_EXPL = 200
 const MAX_EXPL_COUNT = 50
 
-_expl_db_initialized = false
+db_initialized = false
 
 # get the SQLite database, creating/updating it if required
-function _expl_db()::SQLite.DB
-    db = SQLite.DB(settings.expl_sqlite_file)
+function init_db()::SQLite.DB
+    db = SQLite.DB(Klio.settings.expl_sqlite_file)
 
     # perform idempotent (!) database initialization once per execution
-    global _expl_db_initialized
-    if !_expl_db_initialized
+    global db_initialized
+    if !db_initialized
         # id must be AUTOINCREMENT because monotonicity is required for some queries
         # nick is NULL for some old entries
         # datetime (unix timestamp) is NULL for some old entries
@@ -35,14 +40,14 @@ function _expl_db()::SQLite.DB
 
         SQLite.createindex!(db, "t_expl", "idx_expl_item_norm", "item_norm", unique = false, ifnotexists = true)
 
-        _expl_db_initialized = true
+        db_initialized = true
     end
 
     return db
 end
 
 # normalize a string (expl item) for easy searchability
-_expl_item_normalize(item) = Unicode.normalize(item,
+item_normalize(item) = Unicode.normalize(item,
     compat = true,
     casefold = true,
     stripignore = true,
@@ -51,7 +56,7 @@ _expl_item_normalize(item) = Unicode.normalize(item,
 
 # number of 16-bit words in the UTF-16 encoding of the given string
 # string(s) is required because StringEncodings doesn't support SubString
-_utf16_length(s) = length(encode(string(s), enc"UTF-16BE")) >> 1
+utf16_length(s) = length(encode(string(s), enc"UTF-16BE")) >> 1
 
 function add(req::OutgoingWebhookRequest)::OutgoingWebhookResponse
     parts = split(rstrip(req.text), limit = 3)
@@ -60,16 +65,16 @@ function add(req::OutgoingWebhookRequest)::OutgoingWebhookResponse
     end
     _, item, expl = parts
 
-    if _utf16_length(item) > MAX_UTF16_LENGTH_ITEM
+    if utf16_length(item) > MAX_UTF16_LENGTH_ITEM
         return OutgoingWebhookResponse("Tut mir leid, der Begriff ist leider zu lang.")
     end
-    if _utf16_length(expl) > MAX_UTF16_LENGTH_EXPL
+    if utf16_length(expl) > MAX_UTF16_LENGTH_EXPL
         return OutgoingWebhookResponse("Tut mir leid, die Erklärung ist leider zu lang.")
     end
 
-    item_norm = _expl_item_normalize(item)
+    item_norm = item_normalize(item)
 
-    db = _expl_db()
+    db = init_db()
 
     SQLite.Query(db, "INSERT INTO t_expl(nick, item, item_norm, expl, datetime, enabled) VALUES (:nick, :item, :item_norm, :expl, :datetime, :enabled)",
         values = Dict{Symbol, Any}([
@@ -250,9 +255,9 @@ function expl(req::OutgoingWebhookRequest)::OutgoingWebhookResponse
     end
 
     item = parts[2]
-    item_norm = _expl_item_normalize(item)
+    item_norm = item_normalize(item)
 
-    db = _expl_db()
+    db = init_db()
 
     entries = []
     permanent_index = normal_index = UInt64(1)
@@ -269,7 +274,7 @@ function expl(req::OutgoingWebhookRequest)::OutgoingWebhookResponse
                 push!(metadata, nt.:nick)
             end
             if !ismissing(nt.:datetime)
-                datetime = Dates.format(ZonedDateTime(Dates.epochms2datetime(nt.:datetime), settings.expl_time_zone, from_utc = true), settings.expl_datetime_format)
+                datetime = Dates.format(ZonedDateTime(Dates.epochms2datetime(nt.:datetime), Klio.settings.expl_time_zone, from_utc = true), Klio.settings.expl_datetime_format)
                 push!(metadata, datetime)
             end
             if !isempty(metadata)
@@ -321,4 +326,6 @@ function expl(req::OutgoingWebhookRequest)::OutgoingWebhookResponse
     end
 
     return OutgoingWebhookResponse(text)
+end
+
 end

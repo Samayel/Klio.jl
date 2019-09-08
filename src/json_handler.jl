@@ -1,7 +1,11 @@
+module JSON
+
 using HTTP
 using JSON2
 
 import HTTP: handle
+
+export JSONHandler
 
 """
     JSONHandler{T,F} <: HTTP.RequestHandler
@@ -49,4 +53,6 @@ function handle(h::JSONHandler{T}, req::HTTP.Request) where {T}
     HTTP.setheader(res, "Content-Type" => "application/json")
     JSON2.write(IOBuffer(res.body, write = true), resPayload)
     return res
+end
+
 end
