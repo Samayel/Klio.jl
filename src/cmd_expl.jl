@@ -56,7 +56,7 @@ _utf16_length(s) = length(encode(string(s), enc"UTF-16BE")) >> 1
 function add(req::OutgoingWebhookRequest)::OutgoingWebhookResponse
     parts = split(rstrip(req.text), limit = 3)
     if length(parts) !== 3
-        return OutgoingWebhookResponse("Syntax: !add <Begriff> <Erklärung>")
+        return OutgoingWebhookResponse("Syntax: $(parts[1]) <Begriff> <Erklärung>")
     end
     _, item, expl = parts
 
@@ -216,7 +216,7 @@ function expl(req::OutgoingWebhookRequest)::OutgoingWebhookResponse
     parts = split(req.text)
     selectors = tryparse.(ExplIndexSelector{UInt64}, parts[3:end])
     if length(parts) < 2 || any(selectors .== nothing)
-        return OutgoingWebhookResponse("Syntax: !expl <Begriff> { <Index> | <VonIndex>:<BisIndex> }")
+        return OutgoingWebhookResponse("Syntax: $(parts[1]) <Begriff> { <Index> | <VonIndex>:<BisIndex> }")
     end
 
     # default range (all)
@@ -286,8 +286,8 @@ function expl(req::OutgoingWebhookRequest)::OutgoingWebhookResponse
         text = "$text\n```\n" * join(map(entry -> entry.text, selected), '\n') * "\n```"
     end
 
-    title = rstrip("!expl $item " * join(parts[3:end], ' '))
-    fallback = "Es tut mir leid, dein Client kann die Ergebnisse von !expl leider nicht anzeigen."
+    title = join(parts, ' ')
+    fallback = "Es tut mir leid, dein Client kann die Ergebnisse von $(parts[1]) leider nicht anzeigen."
 
     return OutgoingWebhookResponse([MessageAttachment(fallback, title, text)])
 end
