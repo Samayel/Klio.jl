@@ -92,7 +92,7 @@ function add(req::OutgoingWebhookRequest)::OutgoingWebhookResponse
         end
     end
 
-    return OutgoingWebhookResponse("Ich habe den neuen Eintrag $item[$normal_index] hinzugefügt.")
+    return OutgoingWebhookResponse("Ich habe den neuen Eintrag mit Index $normal_index hinzugefügt.")
 end
 
 abstract type ExplIndex{T<:Unsigned} end
