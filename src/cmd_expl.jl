@@ -109,6 +109,11 @@ struct PermanentExplIndex{T} <: ExplIndex{T}
     index::T
 end
 
+# string representation, used by join and string interpolation
+Base.print(io::IO, x::NormalExplIndex) = print(io, string(x.index))
+Base.print(io::IO, x::PermanentExplIndex) = print(io, 'p', string(x.index))
+Base.print(io::IO, x::TailExplIndex) = print(io, '-', string(x.index))
+
 # define strict partial order on ExplIndex subtypes
 Base.:<(a::NormalExplIndex, b::NormalExplIndex) = a.index < b.index
 Base.:<(a::TailExplIndex, b::TailExplIndex) = a.index > b.index # tail index is descending
@@ -198,9 +203,13 @@ function Base.tryparse(::Type{ExplIndexSelector{T}}, s::AbstractString) where {T
 end
 
 struct ExplEntry{T}
-    text::AbstractString
+    item::AbstractString
     indexes::Vector{ExplIndex{T}}
+    text::AbstractString
 end
+
+# string representation, used by join and string interpolation
+Base.print(io::IO, e::ExplEntry) = print(io, "$(e.item)[" * join(e.indexes, '/') * "]: $(e.text)")
 
 # allows using a single ExplEntry with broadcasting
 Base.length(::ExplEntry) = 1
@@ -212,6 +221,11 @@ selects(s::SingleExplIndexSelector{T}, e::ExplEntry{T}) where {T} = any(s.index 
 selects(s::RangeExplIndexSelector{T}, e::ExplEntry{T}) where {T} = any(s.start .<= e.indexes) && any(e.indexes .<= s.stop)
 selects(::AllExplIndexSelector{T}, ::ExplEntry{T}) where {T} = true
 
+# unique ExplIndex subtypes used by an ExplIndexSelector
+indextypes(s::SingleExplIndexSelector) = [typeof(s.index)]
+indextypes(s::RangeExplIndexSelector) = unique([typeof(s.start), typeof(s.stop)])
+indextypes(s::AllExplIndexSelector{T}) where {T} = [NormalExplIndex{T}]
+
 function expl(req::OutgoingWebhookRequest)::OutgoingWebhookResponse
     parts = split(req.text)
     selectors = tryparse.(ExplIndexSelector{UInt64}, parts[3:end])
@@ -222,6 +236,17 @@ function expl(req::OutgoingWebhookRequest)::OutgoingWebhookResponse
     # default range (all)
     if isempty(selectors)
         selectors = [AllExplIndexSelector{UInt64}()]
+    end
+
+    # determine index types used in selectors
+    index_types = union(map(indextypes, selectors)...)
+    use_normal_index = NormalExplIndex{UInt64} in index_types
+    use_permanent_index = PermanentExplIndex{UInt64} in index_types
+    use_tail_index = TailExplIndex{UInt64} in index_types
+
+    # show normal index if no others are shown
+    if !use_permanent_index && !use_tail_index
+        use_normal_index = true
     end
 
     item = parts[2]
@@ -237,7 +262,8 @@ function expl(req::OutgoingWebhookRequest)::OutgoingWebhookResponse
         ]))
 
         if nt.:enabled != 0
-            text = "$(nt.item)[$normal_index]: " * replace(nt.:expl, r"[[:space:]]" => " ")
+            text = replace(nt.:expl, r"[[:space:]]" => " ")
+
             metadata = []
             if !ismissing(nt.:nick)
                 push!(metadata, nt.:nick)
@@ -250,9 +276,15 @@ function expl(req::OutgoingWebhookRequest)::OutgoingWebhookResponse
                 text = "$text (" * join(metadata, ", ") * ')'
             end
 
-            indexes = [NormalExplIndex(normal_index), PermanentExplIndex(permanent_index)]
+            indexes = Vector{ExplIndex{UInt64}}()
+            if use_normal_index
+                push!(indexes, NormalExplIndex(normal_index))
+            end
+            if use_permanent_index
+                push!(indexes, PermanentExplIndex(permanent_index))
+            end
 
-            push!(entries, ExplEntry(text, indexes))
+            push!(entries, ExplEntry(nt.:item, indexes, text))
 
             normal_index = normal_index + 1
         end
@@ -261,10 +293,12 @@ function expl(req::OutgoingWebhookRequest)::OutgoingWebhookResponse
     end
 
     # determine tail indexes
-    tail_index = UInt64(length(entries))
-    for entry in entries
-        push!(entry.indexes, TailExplIndex(tail_index))
-        tail_index = tail_index - 1
+    if use_tail_index
+        tail_index = UInt64(length(entries))
+        for entry in entries
+            push!(entry.indexes, TailExplIndex(tail_index))
+            tail_index = tail_index - 1
+        end
     end
 
     # apply selectors
@@ -283,7 +317,7 @@ function expl(req::OutgoingWebhookRequest)::OutgoingWebhookResponse
             selected = selected[end-MAX_EXPL_COUNT+1:end]
         end
 
-        text = "$text\n```\n" * join(map(entry -> entry.text, selected), '\n') * "\n```"
+        text = "$text\n```\n" * join(selected, '\n') * "\n```"
     end
 
     title = join(parts, ' ')
