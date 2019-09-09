@@ -46,6 +46,7 @@ function run()
 
     HTTP.@register(klioRouter, "POST", "/add", JSONHandler{OutgoingWebhookRequest}(Expl.add))
     HTTP.@register(klioRouter, "POST", "/expl", JSONHandler{OutgoingWebhookRequest}(Expl.expl))
+    HTTP.@register(klioRouter, "POST", "/del", JSONHandler{OutgoingWebhookRequest}(Expl.del))
 
     HTTP.serve(klioRouter, settings.server_host, settings.server_port, verbose = settings.server_verbose)
 end

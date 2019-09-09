@@ -208,6 +208,7 @@ function Base.tryparse(::Type{ExplIndexSelector}, s::AbstractString)
 end
 
 struct ExplEntry
+    rowid::Int64
     item::AbstractString
     indexes::Vector{ExplIndex}
     text::AbstractString
@@ -221,11 +222,11 @@ indextypes(s::SingleExplIndexSelector)::Vector{Type{<:ExplIndex}} = [typeof(s.in
 indextypes(s::RangeExplIndexSelector)::Vector{Type{<:ExplIndex}} = unique([typeof(s.start), typeof(s.stop)])
 indextypes(s::AllExplIndexSelector)::Vector{Type{<:ExplIndex}} = [NormalExplIndex]
 
-sqlify(i::NormalExplIndex, op) = "$(i.index) $op normal_index"
-sqlify(i::PermanentExplIndex, op) = "$(i.index) $op permanent_index"
-sqlify(i::TailExplIndex, op) = "-$(i.index) $op -tail_index"
+sqlify(i::NormalExplIndex, op = "=") = "$(i.index) $op normal_index"
+sqlify(i::PermanentExplIndex, op = "=") = "$(i.index) $op permanent_index"
+sqlify(i::TailExplIndex, op = "=") = "-$(i.index) $op -tail_index"
 
-sqlify(s::SingleExplIndexSelector) = sqlify(s.index, "=")
+sqlify(s::SingleExplIndexSelector) = sqlify(s.index)
 sqlify(s::RangeExplIndexSelector) = '(' * sqlify(s.start, "<=") * ") AND (" * sqlify(s.stop, ">=") * ')'
 sqlify(s::AllExplIndexSelector) = "1 = 1"
 
@@ -257,7 +258,7 @@ function convert_expl_row(nt::NamedTuple, index_types::Vector{Type{<:ExplIndex}}
         push!(indexes, TailExplIndex(nt.:tail_index))
     end
 
-    return ExplEntry(nt.:item, indexes, text)
+    return ExplEntry(nt.:rowid, nt.:item, indexes, text)
 end
 
 function expl(req::OutgoingWebhookRequest)::OutgoingWebhookResponse
@@ -303,6 +304,55 @@ function expl(req::OutgoingWebhookRequest)::OutgoingWebhookResponse
         end
 
         text = "$text\n```\n" * join(entries, '\n') * "\n```"
+    end
+
+    return OutgoingWebhookResponse(text)
+end
+
+function del(req::OutgoingWebhookRequest)::OutgoingWebhookResponse
+    parts = split(req.text)
+    if length(parts) != 3
+        return OutgoingWebhookResponse("Syntax: $(parts[1]) <Begriff> <Index>")
+    end
+
+    index = tryparse(ExplIndex, parts[3])
+    if isnothing(index)
+        return OutgoingWebhookResponse("Syntax: $(parts[1]) <Begriff> <Index>")
+    end
+
+    # convert index to SQL
+    index_sql = sqlify(index)
+
+    # determine index type used
+    index_types = Type{<:ExplIndex}[typeof(index)]
+
+    item = parts[2]
+    item_norm = item_normalize(item)
+
+    db = init_db()
+
+    entries = []
+    for nt in SQLite.Query(db, "SELECT * FROM ($QUERY_BY_ITEM_NORM) WHERE enabled <> 0 AND ($index_sql)",
+                        values = Dict{Symbol, Any}(QUERY_BY_ITEM_NORM_PARAM => item_norm))
+        push!(entries, convert_expl_row(nt, index_types))
+    end
+
+    changes = 0
+    if length(entries) == 1
+        SQLite.Query(db, "UPDATE t_expl SET enabled = 0 WHERE enabled <> 0 AND rowid = :rowid",
+                        values = Dict{Symbol, Any}(:rowid => entries[1].rowid))
+
+        for nt in SQLite.Query(db, "SELECT changes() changes")
+            changes = nt.:changes
+        end
+    end
+
+    if changes == 0
+        text = "Ich habe leider keinen Eintrag zum Löschen gefunden."
+    elseif changes == 1
+        text = "Ich habe den folgenden Eintrag gelöscht:\n```\n$(entries[1])\n```"
+    else
+        error("more than one entry matched request \"$(req.text)\"")
     end
 
     return OutgoingWebhookResponse(text)
