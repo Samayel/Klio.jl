@@ -217,9 +217,9 @@ end
 Base.print(io::IO, e::ExplEntry) = print(io, "$(e.item)[" * join(e.indexes, '/') * "]: $(e.text)")
 
 # unique ExplIndex subtypes used by an ExplIndexSelector
-indextypes(s::SingleExplIndexSelector) = [typeof(s.index)]
-indextypes(s::RangeExplIndexSelector) = unique([typeof(s.start), typeof(s.stop)])
-indextypes(s::AllExplIndexSelector) = [NormalExplIndex]
+indextypes(s::SingleExplIndexSelector)::Vector{Type{<:ExplIndex}} = [typeof(s.index)]
+indextypes(s::RangeExplIndexSelector)::Vector{Type{<:ExplIndex}} = unique([typeof(s.start), typeof(s.stop)])
+indextypes(s::AllExplIndexSelector)::Vector{Type{<:ExplIndex}} = [NormalExplIndex]
 
 sqlify(i::NormalExplIndex, op) = "$(i.index) $op normal_index"
 sqlify(i::PermanentExplIndex, op) = "$(i.index) $op permanent_index"
@@ -231,6 +231,35 @@ sqlify(s::AllExplIndexSelector) = "1 = 1"
 
 sqlify(ss::Vector{<:ExplIndexSelector}) = '(' * join(sqlify.(ss), ") OR (") * ')'
 
+function convert_expl_row(nt::NamedTuple, index_types::Vector{Type{<:ExplIndex}})::ExplEntry
+    text = replace(nt.:expl, r"[[:space:]]" => " ")
+
+    metadata = []
+    if !ismissing(nt.:nick)
+        push!(metadata, nt.:nick)
+    end
+    if !ismissing(nt.:datetime)
+        datetime = Dates.format(ZonedDateTime(Dates.epochms2datetime(nt.:datetime), Klio.settings.expl_time_zone, from_utc = true), Klio.settings.expl_datetime_format)
+        push!(metadata, datetime)
+    end
+    if !isempty(metadata)
+        text = "$text (" * join(metadata, ", ") * ')'
+    end
+
+    indexes = Vector{ExplIndex}()
+    if NormalExplIndex in index_types
+        push!(indexes, NormalExplIndex(nt.:normal_index))
+    end
+    if PermanentExplIndex in index_types
+        push!(indexes, PermanentExplIndex(nt.:permanent_index))
+    end
+    if TailExplIndex in index_types
+        push!(indexes, TailExplIndex(nt.:tail_index))
+    end
+
+    return ExplEntry(nt.:item, indexes, text)
+end
+
 function expl(req::OutgoingWebhookRequest)::OutgoingWebhookResponse
     parts = split(req.text)
     selectors = tryparse.(ExplIndexSelector, parts[3:end])
@@ -238,23 +267,16 @@ function expl(req::OutgoingWebhookRequest)::OutgoingWebhookResponse
         return OutgoingWebhookResponse("Syntax: $(parts[1]) <Begriff> { <Index> | <VonIndex>:<BisIndex> }")
     end
 
-    # default range (all)
+    # default selector (all)
     if isempty(selectors)
         selectors = [AllExplIndexSelector()]
     end
 
+    # convert selectors to SQL
     selectors_sql = sqlify(selectors)
 
     # determine index types used in selectors
     index_types = union(map(indextypes, selectors)...)
-    use_normal_index = NormalExplIndex in index_types
-    use_permanent_index = PermanentExplIndex in index_types
-    use_tail_index = TailExplIndex in index_types
-
-    # show normal index if no others are shown
-    if !use_permanent_index && !use_tail_index
-        use_normal_index = true
-    end
 
     item = parts[2]
     item_norm = item_normalize(item)
@@ -263,36 +285,8 @@ function expl(req::OutgoingWebhookRequest)::OutgoingWebhookResponse
 
     entries = []
     for nt in SQLite.Query(db, "SELECT * FROM ($QUERY_BY_ITEM_NORM) WHERE enabled <> 0 AND ($selectors_sql) ORDER BY id",
-        values = Dict{Symbol, Any}([
-            QUERY_BY_ITEM_NORM_PARAM => item_norm,
-        ]))
-
-        text = replace(nt.:expl, r"[[:space:]]" => " ")
-
-        metadata = []
-        if !ismissing(nt.:nick)
-            push!(metadata, nt.:nick)
-        end
-        if !ismissing(nt.:datetime)
-            datetime = Dates.format(ZonedDateTime(Dates.epochms2datetime(nt.:datetime), Klio.settings.expl_time_zone, from_utc = true), Klio.settings.expl_datetime_format)
-            push!(metadata, datetime)
-        end
-        if !isempty(metadata)
-            text = "$text (" * join(metadata, ", ") * ')'
-        end
-
-        indexes = Vector{ExplIndex}()
-        if use_normal_index
-            push!(indexes, NormalExplIndex(nt.:normal_index))
-        end
-        if use_permanent_index
-            push!(indexes, PermanentExplIndex(nt.:permanent_index))
-        end
-        if use_tail_index
-            push!(indexes, TailExplIndex(nt.:tail_index))
-        end
-
-        push!(entries, ExplEntry(nt.:item, indexes, text))
+                            values = Dict{Symbol, Any}(QUERY_BY_ITEM_NORM_PARAM => item_norm))
+        push!(entries, convert_expl_row(nt, index_types))
     end
 
     count = length(entries)
