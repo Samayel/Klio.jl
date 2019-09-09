@@ -130,17 +130,6 @@ Base.print(io::IO, x::NormalExplIndex) = print(io, string(x.index))
 Base.print(io::IO, x::PermanentExplIndex) = print(io, 'p', string(x.index))
 Base.print(io::IO, x::TailExplIndex) = print(io, '-', string(x.index))
 
-# define strict partial order on ExplIndex subtypes
-Base.:<(a::NormalExplIndex, b::NormalExplIndex) = a.index < b.index
-Base.:<(a::TailExplIndex, b::TailExplIndex) = a.index > b.index # tail index is descending
-Base.:<(a::PermanentExplIndex, b::PermanentExplIndex) = a.index < b.index
-Base.:<(::ExplIndex, ::ExplIndex) = false # fallback for unrelated index types
-
-# allows using a single ExplIndex (or subtype) with broadcasting
-Base.length(::ExplIndex) = 1
-Base.iterate(i::ExplIndex) = (i, nothing)
-Base.iterate(::ExplIndex, ::Nothing) = nothing
-
 abstract type ExplIndexSelector end
 
 struct SingleExplIndexSelector <: ExplIndexSelector
@@ -227,20 +216,20 @@ end
 # string representation, used by join and string interpolation
 Base.print(io::IO, e::ExplEntry) = print(io, "$(e.item)[" * join(e.indexes, '/') * "]: $(e.text)")
 
-# allows using a single ExplEntry with broadcasting
-Base.length(::ExplEntry) = 1
-Base.iterate(i::ExplEntry) = (i, nothing)
-Base.iterate(::ExplEntry, ::Nothing) = nothing
-
-# checks if an ExplIndexSelector selects an ExplEntry
-selects(s::SingleExplIndexSelector, e::ExplEntry) = any(s.index .== e.indexes)
-selects(s::RangeExplIndexSelector, e::ExplEntry) = any(s.start .<= e.indexes) && any(e.indexes .<= s.stop)
-selects(::AllExplIndexSelector, ::ExplEntry) = true
-
 # unique ExplIndex subtypes used by an ExplIndexSelector
 indextypes(s::SingleExplIndexSelector) = [typeof(s.index)]
 indextypes(s::RangeExplIndexSelector) = unique([typeof(s.start), typeof(s.stop)])
 indextypes(s::AllExplIndexSelector) = [NormalExplIndex]
+
+sqlify(i::NormalExplIndex, op) = "$(i.index) $op normal_index"
+sqlify(i::PermanentExplIndex, op) = "$(i.index) $op permanent_index"
+sqlify(i::TailExplIndex, op) = "-$(i.index) $op -tail_index"
+
+sqlify(s::SingleExplIndexSelector) = sqlify(s.index, "=")
+sqlify(s::RangeExplIndexSelector) = '(' * sqlify(s.start, "<=") * ") AND (" * sqlify(s.stop, ">=") * ')'
+sqlify(s::AllExplIndexSelector) = "1 = 1"
+
+sqlify(ss::Vector{<:ExplIndexSelector}) = '(' * join(sqlify.(ss), ") OR (") * ')'
 
 function expl(req::OutgoingWebhookRequest)::OutgoingWebhookResponse
     parts = split(req.text)
@@ -253,6 +242,8 @@ function expl(req::OutgoingWebhookRequest)::OutgoingWebhookResponse
     if isempty(selectors)
         selectors = [AllExplIndexSelector()]
     end
+
+    selectors_sql = sqlify(selectors)
 
     # determine index types used in selectors
     index_types = union(map(indextypes, selectors)...)
@@ -271,7 +262,7 @@ function expl(req::OutgoingWebhookRequest)::OutgoingWebhookResponse
     db = init_db()
 
     entries = []
-    for nt in SQLite.Query(db, "SELECT * FROM ($QUERY_BY_ITEM_NORM) WHERE enabled <> 0 ORDER BY id",
+    for nt in SQLite.Query(db, "SELECT * FROM ($QUERY_BY_ITEM_NORM) WHERE enabled <> 0 AND ($selectors_sql) ORDER BY id",
         values = Dict{Symbol, Any}([
             QUERY_BY_ITEM_NORM_PARAM => item_norm,
         ]))
@@ -304,10 +295,7 @@ function expl(req::OutgoingWebhookRequest)::OutgoingWebhookResponse
         push!(entries, ExplEntry(nt.:item, indexes, text))
     end
 
-    # apply selectors
-    selected = filter(entry -> any(selects.(selectors, entry)), entries)
-
-    count = length(selected)
+    count = length(entries)
     if count == 0
         text = "Ich habe leider keinen Eintrag gefunden."
     else
@@ -317,10 +305,10 @@ function expl(req::OutgoingWebhookRequest)::OutgoingWebhookResponse
             text = "Ich habe die folgenden $count Einträge gefunden:"
         else
             text = "Ich habe $count Einträge gefunden, das sind die letzten $MAX_EXPL_COUNT:"
-            selected = selected[end-MAX_EXPL_COUNT+1:end]
+            entries = entries[end-MAX_EXPL_COUNT+1:end]
         end
 
-        text = "$text\n```\n" * join(selected, '\n') * "\n```"
+        text = "$text\n```\n" * join(entries, '\n') * "\n```"
     end
 
     return OutgoingWebhookResponse(text)
