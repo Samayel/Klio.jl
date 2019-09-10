@@ -70,52 +70,6 @@ item_normalize(item) = Unicode.normalize(item,
 # string(s) is required because StringEncodings doesn't support SubString
 utf16_length(s) = length(encode(string(s), enc"UTF-16BE")) >> 1
 
-function add(req)
-    parts = split(rstrip(req.text), limit = 3)
-    if length(parts) !== 3
-        return OutgoingWebhookResponse("Syntax: $(parts[1]) <Begriff> <Erklärung>")
-    end
-    _, item, expl = parts
-
-    if utf16_length(item) > MAX_UTF16_LENGTH_ITEM
-        return OutgoingWebhookResponse("Tut mir leid, der Begriff ist leider zu lang.")
-    end
-    if utf16_length(expl) > MAX_UTF16_LENGTH_EXPL
-        return OutgoingWebhookResponse("Tut mir leid, die Erklärung ist leider zu lang.")
-    end
-
-    item_norm = item_normalize(item)
-
-    db = init_db()
-
-    SQLite.Query(db, "INSERT INTO t_expl(nick, item, item_norm, expl, datetime, enabled) VALUES (:nick, :item, :item_norm, :expl, :datetime, :enabled)",
-        values = Dict(
-            :nick => req.user_name,
-            :item => item,
-            :item_norm => item_norm,
-            :expl => expl,
-            :datetime => Dates.datetime2epochms(Dates.now(Dates.UTC)),
-            :enabled => 1
-        ))
-
-    entries = []
-    for nt in SQLite.Query(db, "SELECT * FROM ($QUERY_BY_ITEM_NORM) WHERE enabled <> 0 AND rowid = last_insert_rowid()",
-                        values = Dict(QUERY_BY_ITEM_NORM_PARAM => item_norm))
-        push!(entries, convert_expl_row(nt, [NormalExplIndex, PermanentExplIndex]))
-    end
-
-    count = length(entries)
-    if count == 1
-        text = "Ich habe den folgenden neuen Eintrag hinzugefügt:\n```\n$(entries[1])\n```"
-    elseif count == 0
-        text = "Ich konnte den eben hinzugefügten Eintrag leider nicht mehr finden."
-    else
-        error("more than one entry added by request \"$(req.text)\"")
-    end
-
-    return OutgoingWebhookResponse(text)
-end
-
 abstract type ExplIndex end
 
 struct NormalExplIndex <: ExplIndex
@@ -264,6 +218,53 @@ function convert_expl_row(nt, index_types)
     end
 
     return ExplEntry(nt.:rowid, nt.:item, indexes, text)
+end
+
+
+function add(req)
+    parts = split(rstrip(req.text), limit = 3)
+    if length(parts) !== 3
+        return OutgoingWebhookResponse("Syntax: $(parts[1]) <Begriff> <Erklärung>")
+    end
+    _, item, expl = parts
+
+    if utf16_length(item) > MAX_UTF16_LENGTH_ITEM
+        return OutgoingWebhookResponse("Tut mir leid, der Begriff ist leider zu lang.")
+    end
+    if utf16_length(expl) > MAX_UTF16_LENGTH_EXPL
+        return OutgoingWebhookResponse("Tut mir leid, die Erklärung ist leider zu lang.")
+    end
+
+    item_norm = item_normalize(item)
+
+    db = init_db()
+
+    SQLite.Query(db, "INSERT INTO t_expl(nick, item, item_norm, expl, datetime, enabled) VALUES (:nick, :item, :item_norm, :expl, :datetime, :enabled)",
+        values = Dict(
+            :nick => req.user_name,
+            :item => item,
+            :item_norm => item_norm,
+            :expl => expl,
+            :datetime => Dates.datetime2epochms(Dates.now(Dates.UTC)),
+            :enabled => 1
+        ))
+
+    entries = []
+    for nt in SQLite.Query(db, "SELECT * FROM ($QUERY_BY_ITEM_NORM) WHERE enabled <> 0 AND rowid = last_insert_rowid()",
+                        values = Dict(QUERY_BY_ITEM_NORM_PARAM => item_norm))
+        push!(entries, convert_expl_row(nt, [NormalExplIndex, PermanentExplIndex]))
+    end
+
+    count = length(entries)
+    if count == 1
+        text = "Ich habe den folgenden neuen Eintrag hinzugefügt:\n```\n$(entries[1])\n```"
+    elseif count == 0
+        text = "Ich konnte den eben hinzugefügten Eintrag leider nicht mehr finden."
+    else
+        error("more than one entry added by request \"$(req.text)\"")
+    end
+
+    return OutgoingWebhookResponse(text)
 end
 
 function expl(req)
