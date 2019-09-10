@@ -17,8 +17,8 @@ run() = begin
     route("/calc", method = POST) do
         message = @params(:JSON_PAYLOAD)
         question = replace(message["text"], "!calc " => "")
-        answer = question |> rcall
-        Dict(:response_type => "in_channel", :text => answer) |> json
+        answer = rcall(question, :nat) |> string |> chomp
+        Dict(:response_type => "post", :text => "```" * answer * "\n```") |> json
     end
 
     route("/choose", method = POST) do
