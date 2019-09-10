@@ -4,7 +4,7 @@ using Dates
 
 using ..Mattermost
 
-function time(req::OutgoingWebhookRequest)::OutgoingWebhookResponse
+function time(req)
     return OutgoingWebhookResponse(Dates.format(Dates.now(Dates.UTC), Dates.ISODateTimeFormat))
 end
 

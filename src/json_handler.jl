@@ -22,10 +22,9 @@ end
 """
     JSONHandler{T}(func::F) where {T, F}
 
-Outer constructor for JSONHandler, allowing `T` to be specified as type
-parameter while inferring `F` from `func`.
+Outer constructor for JSONHandler, inferring `T` and `F` from parameters.
 """
-JSONHandler{T}(func::F) where {T, F} = JSONHandler{T, F}(func)
+JSONHandler(::Type{T}, func::F) where {T, F} = JSONHandler{T, F}(func)
 
 """
     HTTP.handle(h::JSONHandler{T}, ::HTTP.Request) where {T}

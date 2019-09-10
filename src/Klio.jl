@@ -40,13 +40,15 @@ settings = Settings()
 function run()
     klioRouter = HTTP.Router()
 
-    HTTP.@register(klioRouter, "POST", "/calc", JSONHandler{OutgoingWebhookRequest}(Calc.calc))
-    HTTP.@register(klioRouter, "POST", "/choose", JSONHandler{OutgoingWebhookRequest}(Choose.choose))
-    HTTP.@register(klioRouter, "POST", "/time", JSONHandler{OutgoingWebhookRequest}(Time.time))
+    wrap(h) = JSONHandler(OutgoingWebhookRequest, h)
 
-    HTTP.@register(klioRouter, "POST", "/add", JSONHandler{OutgoingWebhookRequest}(Expl.add))
-    HTTP.@register(klioRouter, "POST", "/expl", JSONHandler{OutgoingWebhookRequest}(Expl.expl))
-    HTTP.@register(klioRouter, "POST", "/del", JSONHandler{OutgoingWebhookRequest}(Expl.del))
+    HTTP.@register(klioRouter, "POST", "/calc", wrap(Calc.calc))
+    HTTP.@register(klioRouter, "POST", "/choose", wrap(Choose.choose))
+    HTTP.@register(klioRouter, "POST", "/time", wrap(Time.time))
+
+    HTTP.@register(klioRouter, "POST", "/add", wrap(Expl.add))
+    HTTP.@register(klioRouter, "POST", "/expl", wrap(Expl.expl))
+    HTTP.@register(klioRouter, "POST", "/del", wrap(Expl.del))
 
     HTTP.serve(klioRouter, settings.server_host, settings.server_port, verbose = settings.server_verbose)
 end

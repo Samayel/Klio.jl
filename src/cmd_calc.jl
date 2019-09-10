@@ -6,7 +6,7 @@ using ..Mattermost
 
 reduce_initialized = false
 
-function calc(req::OutgoingWebhookRequest)::OutgoingWebhookResponse
+function calc(req)
     global reduce_initialized
     if !reduce_initialized
         rcall("load_package RESET")

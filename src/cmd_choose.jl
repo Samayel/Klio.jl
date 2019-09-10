@@ -2,7 +2,7 @@ module Choose
 
 using ..Mattermost
 
-function choose(req::OutgoingWebhookRequest)::OutgoingWebhookResponse
+function choose(req)
     options = split(req.text)
     # Weg mit dem !choose
     popfirst!(options)

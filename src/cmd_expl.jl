@@ -15,8 +15,8 @@ const MAX_EXPL_COUNT = 50
 
 db_initialized = false
 
-# get the SQLite database, creating/updating it if required
-function init_db()::SQLite.DB
+# get the SQLite.DB, creating/updating it if required
+function init_db()
     db = SQLite.DB(Klio.settings.expl_sqlite_file)
 
     # perform idempotent (!) database initialization once per execution
@@ -70,7 +70,7 @@ item_normalize(item) = Unicode.normalize(item,
 # string(s) is required because StringEncodings doesn't support SubString
 utf16_length(s) = length(encode(string(s), enc"UTF-16BE")) >> 1
 
-function add(req::OutgoingWebhookRequest)::OutgoingWebhookResponse
+function add(req)
     parts = split(rstrip(req.text), limit = 3)
     if length(parts) !== 3
         return OutgoingWebhookResponse("Syntax: $(parts[1]) <Begriff> <Erklärung>")
@@ -89,20 +89,18 @@ function add(req::OutgoingWebhookRequest)::OutgoingWebhookResponse
     db = init_db()
 
     SQLite.Query(db, "INSERT INTO t_expl(nick, item, item_norm, expl, datetime, enabled) VALUES (:nick, :item, :item_norm, :expl, :datetime, :enabled)",
-        values = Dict{Symbol, Any}([
+        values = Dict(
             :nick => req.user_name,
             :item => item,
             :item_norm => item_norm,
             :expl => expl,
             :datetime => Dates.datetime2epochms(Dates.now(Dates.UTC)),
             :enabled => 1
-        ]))
+        ))
 
     permanent_index = normal_index = tail_index = 0
     for nt in SQLite.Query(db, "SELECT normal_index, permanent_index, tail_index FROM ($QUERY_BY_ITEM_NORM) WHERE rowid = last_insert_rowid()",
-        values = Dict{Symbol, Any}([
-            QUERY_BY_ITEM_NORM_PARAM => item_norm,
-        ]))
+        values = Dict(QUERY_BY_ITEM_NORM_PARAM => item_norm))
         normal_index = nt.:normal_index
         permanent_index = nt.:permanent_index
         tail_index = nt.:tail_index
@@ -218,9 +216,9 @@ end
 Base.print(io::IO, e::ExplEntry) = print(io, "$(e.item)[" * join(e.indexes, '/') * "]: $(e.text)")
 
 # unique ExplIndex subtypes used by an ExplIndexSelector
-indextypes(s::SingleExplIndexSelector)::Vector{Type{<:ExplIndex}} = [typeof(s.index)]
-indextypes(s::RangeExplIndexSelector)::Vector{Type{<:ExplIndex}} = unique([typeof(s.start), typeof(s.stop)])
-indextypes(s::AllExplIndexSelector)::Vector{Type{<:ExplIndex}} = [NormalExplIndex]
+indextypes(s::SingleExplIndexSelector) = [typeof(s.index)]
+indextypes(s::RangeExplIndexSelector) = unique([typeof(s.start), typeof(s.stop)])
+indextypes(s::AllExplIndexSelector) = [NormalExplIndex]
 
 sqlify(i::NormalExplIndex, op = "=") = "$(i.index) $op normal_index"
 sqlify(i::PermanentExplIndex, op = "=") = "$(i.index) $op permanent_index"
@@ -232,7 +230,7 @@ sqlify(s::AllExplIndexSelector) = "1 = 1"
 
 sqlify(ss::Vector{<:ExplIndexSelector}) = '(' * join(sqlify.(ss), ") OR (") * ')'
 
-function convert_expl_row(nt::NamedTuple, index_types::Vector{Type{<:ExplIndex}})::ExplEntry
+function convert_expl_row(nt, index_types)
     text = replace(nt.:expl, r"[[:space:]]" => " ")
 
     metadata = []
@@ -247,7 +245,7 @@ function convert_expl_row(nt::NamedTuple, index_types::Vector{Type{<:ExplIndex}}
         text = "$text (" * join(metadata, ", ") * ')'
     end
 
-    indexes = Vector{ExplIndex}()
+    indexes = []
     if NormalExplIndex in index_types
         push!(indexes, NormalExplIndex(nt.:normal_index))
     end
@@ -261,7 +259,7 @@ function convert_expl_row(nt::NamedTuple, index_types::Vector{Type{<:ExplIndex}}
     return ExplEntry(nt.:rowid, nt.:item, indexes, text)
 end
 
-function expl(req::OutgoingWebhookRequest)::OutgoingWebhookResponse
+function expl(req)
     parts = split(req.text)
     selectors = tryparse.(ExplIndexSelector, parts[3:end])
     if length(parts) < 2 || any(selectors .== nothing)
@@ -286,7 +284,7 @@ function expl(req::OutgoingWebhookRequest)::OutgoingWebhookResponse
 
     entries = []
     for nt in SQLite.Query(db, "SELECT * FROM ($QUERY_BY_ITEM_NORM) WHERE enabled <> 0 AND ($selectors_sql) ORDER BY id",
-                            values = Dict{Symbol, Any}(QUERY_BY_ITEM_NORM_PARAM => item_norm))
+                            values = Dict(QUERY_BY_ITEM_NORM_PARAM => item_norm))
         push!(entries, convert_expl_row(nt, index_types))
     end
 
@@ -309,7 +307,7 @@ function expl(req::OutgoingWebhookRequest)::OutgoingWebhookResponse
     return OutgoingWebhookResponse(text)
 end
 
-function del(req::OutgoingWebhookRequest)::OutgoingWebhookResponse
+function del(req)
     parts = split(req.text)
     if length(parts) != 3
         return OutgoingWebhookResponse("Syntax: $(parts[1]) <Begriff> <Index>")
@@ -324,7 +322,7 @@ function del(req::OutgoingWebhookRequest)::OutgoingWebhookResponse
     index_sql = sqlify(index)
 
     # determine index type used
-    index_types = Type{<:ExplIndex}[typeof(index)]
+    index_types = [typeof(index)]
 
     item = parts[2]
     item_norm = item_normalize(item)
@@ -333,14 +331,14 @@ function del(req::OutgoingWebhookRequest)::OutgoingWebhookResponse
 
     entries = []
     for nt in SQLite.Query(db, "SELECT * FROM ($QUERY_BY_ITEM_NORM) WHERE enabled <> 0 AND ($index_sql)",
-                        values = Dict{Symbol, Any}(QUERY_BY_ITEM_NORM_PARAM => item_norm))
+                        values = Dict(QUERY_BY_ITEM_NORM_PARAM => item_norm))
         push!(entries, convert_expl_row(nt, index_types))
     end
 
     changes = 0
     if length(entries) == 1
         SQLite.Query(db, "UPDATE t_expl SET enabled = 0 WHERE enabled <> 0 AND rowid = :rowid",
-                        values = Dict{Symbol, Any}(:rowid => entries[1].rowid))
+                        values = Dict(:rowid => entries[1].rowid))
 
         for nt in SQLite.Query(db, "SELECT changes() changes")
             changes = nt.:changes
