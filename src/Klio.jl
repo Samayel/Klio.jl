@@ -2,6 +2,7 @@ module Klio
 
 using Dates
 using Genie
+using Reduce
 
 import Genie.Router: route, POST, @params
 import Genie.Renderer: json
@@ -11,6 +12,13 @@ run() = begin
 
     route("/time", method = POST) do
         Dict(:response_type => "in_channel", :text => Dates.now(Dates.UTC)) |> json
+    end
+
+    route("/calc", method = POST) do
+        message = @params(:JSON_PAYLOAD)
+        question = replace(message["text"], "!calc " => "")
+        answer = question |> rcall
+        Dict(:response_type => "in_channel", :text => answer) |> json
     end
 
     route("/choose", method = POST) do
