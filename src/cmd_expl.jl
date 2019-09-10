@@ -98,15 +98,22 @@ function add(req)
             :enabled => 1
         ))
 
-    permanent_index = normal_index = tail_index = 0
-    for nt in SQLite.Query(db, "SELECT normal_index, permanent_index, tail_index FROM ($QUERY_BY_ITEM_NORM) WHERE rowid = last_insert_rowid()",
-        values = Dict(QUERY_BY_ITEM_NORM_PARAM => item_norm))
-        normal_index = nt.:normal_index
-        permanent_index = nt.:permanent_index
-        tail_index = nt.:tail_index
+    entries = []
+    for nt in SQLite.Query(db, "SELECT * FROM ($QUERY_BY_ITEM_NORM) WHERE enabled <> 0 AND rowid = last_insert_rowid()",
+                        values = Dict(QUERY_BY_ITEM_NORM_PARAM => item_norm))
+        push!(entries, convert_expl_row(nt, [NormalExplIndex, PermanentExplIndex]))
     end
 
-    return OutgoingWebhookResponse("Ich habe den neuen Eintrag mit Index [$normal_index/p$permanent_index/-$tail_index] hinzugefügt.")
+    count = length(entries)
+    if count == 1
+        text = "Ich habe den folgenden neuen Eintrag hinzugefügt:\n```\n$(entries[1])\n```"
+    elseif count == 0
+        text = "Ich konnte den eben hinzugefügten Eintrag leider nicht mehr finden."
+    else
+        error("more than one entry added by request \"$(req.text)\"")
+    end
+
+    return OutgoingWebhookResponse(text)
 end
 
 abstract type ExplIndex end
