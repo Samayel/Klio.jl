@@ -8,6 +8,10 @@ import Genie.Router: route, POST, @params
 import Genie.Renderer: json
 
 run() = begin
+    rcall("load_package RESET")
+    rcall("load_package RLFI")
+    rcall("1+1")
+
     Genie.config.run_as_server = true
 
     route("/time", method = POST) do
@@ -17,8 +21,11 @@ run() = begin
     route("/calc", method = POST) do
         message = @params(:JSON_PAYLOAD)
         question = replace(message["text"], "!calc " => "")
-        answer = rcall(question, :nat) |> string |> chomp
-        Dict(:response_type => "post", :text => "```" * answer * "\n```") |> json
+        try rcall("RESETREDUCE") catch; end
+        answer = rcall(question, :latex) |> string |> chomp
+        answer = replace(answer, "\\begin{displaymath}" => "")
+        answer = replace(answer, "\\end{displaymath}" => "")
+        Dict(:response_type => "post", :text => "```latex\n" * answer * "\n```") |> json
     end
 
     route("/choose", method = POST) do
