@@ -12,6 +12,7 @@ using ..Mattermost
 const MAX_UTF16_LENGTH_ITEM = 50
 const MAX_UTF16_LENGTH_EXPL = 200
 const MAX_EXPL_COUNT = 50
+const MAX_FIND_COUNT = 50
 
 db_initialized = false
 
@@ -42,6 +43,9 @@ function init_db()
 
         db_initialized = true
     end
+
+    # this should happen automatically, according to the SQLite.jl docs
+    SQLite.register(db, SQLite.regexp, nargs = 2, name = "regexp")
 
     return db
 end
@@ -220,7 +224,6 @@ function convert_expl_row(nt, index_types)
     return ExplEntry(nt.:rowid, nt.:item, indexes, text)
 end
 
-
 function add(req)
     parts = split(rstrip(req.text), limit = 3)
     if length(parts) !== 3
@@ -359,6 +362,54 @@ function del(req)
         text = "Ich habe den folgenden Eintrag gelöscht:\n```\n$(entries[1])\n```"
     else
         error("more than one entry matched request \"$(req.text)\"")
+    end
+
+    return OutgoingWebhookResponse(text)
+end
+
+# cannot use QUERY_BY_ITEM_NORM, because the indexes need to be partitioned by item_norm
+const QUERY_BY_EXPL_REGEXP = """
+    SELECT t.* FROM (
+        SELECT rowid, id, nick, item, item_norm, expl, datetime, enabled,
+               CASE WHEN enabled <> 0 THEN ROW_NUMBER() OVER (PARTITION BY item_norm, enabled <> 0 ORDER BY id) END normal_index,
+               ROW_NUMBER() OVER (PARTITION BY item_norm ORDER BY id) permanent_index,
+               CASE WHEN enabled <> 0 THEN ROW_NUMBER() OVER (PARTITION BY item_norm, enabled <> 0 ORDER BY id DESC) END tail_index
+        FROM t_expl
+    ) t WHERE t.enabled <> 0 AND t.expl REGEXP :expl_regexp ORDER BY id
+"""
+
+const QUERY_BY_EXPL_REGEXP_PARAM = :expl_regexp
+
+function find(req)
+    parts = split(rstrip(req.text), limit = 2)
+    if length(parts) != 2
+        return OutgoingWebhookResponse("Syntax: $(parts[1]) <Suchbegriff>")
+    end
+
+    expl_regexp = parts[2]
+
+    db = init_db()
+
+    entries = []
+    for nt in SQLite.Query(db, QUERY_BY_EXPL_REGEXP,
+                            values = Dict(QUERY_BY_EXPL_REGEXP_PARAM => expl_regexp))
+        push!(entries, convert_expl_row(nt, [NormalExplIndex, PermanentExplIndex]))
+    end
+
+    count = length(entries)
+    if count == 0
+        text = "Ich habe leider keinen Eintrag gefunden."
+    else
+        if count == 1
+            text = "Ich habe den folgenden Eintrag gefunden:"
+        elseif count <= MAX_FIND_COUNT
+            text = "Ich habe die folgenden $count Einträge gefunden:"
+        else
+            text = "Ich habe $count Einträge gefunden, das sind die letzten $MAX_FIND_COUNT:"
+            entries = entries[end-MAX_FIND_COUNT+1:end]
+        end
+
+        text = "$text\n```\n" * join(entries, '\n') * "\n```"
     end
 
     return OutgoingWebhookResponse(text)
