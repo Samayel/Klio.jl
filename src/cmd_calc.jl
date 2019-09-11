@@ -39,7 +39,7 @@ function rcalc(question)
 end
 
 function mcalc(question)
-    if occursin(r"(batch[a-z_]*|file[a-z_]*|load[a-z_]*|pathname[a-z_]*|save|stringout|with_stdout|[a-z_]*file)\s*\("i, question)
+    if occursin(r"(batch[a-z_]*|file[a-z_]*|load[a-z_]+|pathname[a-z_]*|save|stringout|with_stdout|[a-z_]*file)\s*\("i, question)
         throw(MaximaError("Forbidden"))
     end
 
@@ -51,7 +51,13 @@ function mcalc(question)
     end
     answer = mcall(question)
 
-    return OutgoingWebhookResponse("`" * answer * "`")
+    if startswith(answer, "\$\$")
+        answer = replace(answer, r"^[^$]*[$]{2}" => "")
+        answer = replace(answer, r"[$]{2}[^$]*$" => "")
+        return OutgoingWebhookResponse("```latex\n" * answer * "\n```")
+    else
+        return OutgoingWebhookResponse("`" * answer * "`")
+    end
 end
 
 end
