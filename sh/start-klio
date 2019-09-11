@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+
+set -e
+
+KLIODIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )/.." && pwd -P )"
+
+pushd "${KLIODIR}"
+
+julia --project="${KLIODIR}" "${KLIODIR}/run.jl"
+
+popd
