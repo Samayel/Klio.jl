@@ -1,16 +1,20 @@
 module Calc
 
-using Maxima
-using Reduce
-
 using ..Mattermost
 
 reduce_initialized = false
 
 function calc(req)
-    startswith(req.text, "!calc --maxima ") && return mcalc(replace(req.text, "!calc --maxima " => ""))
-    startswith(req.text, "!calc --reduce ") && return rcalc(replace(req.text, "!calc --reduce " => ""))
-    mcalc(replace(req.text, "!calc " => ""))
+    startswith(req.text, "!calc --maxima ") && return mcalc_lazy(replace(req.text, "!calc --maxima " => ""))
+    startswith(req.text, "!calc --reduce ") && return rcalc_lazy(replace(req.text, "!calc --reduce " => ""))
+    mcalc_lazy(replace(req.text, "!calc " => ""))
+end
+
+function rcalc_lazy(question)
+    @eval begin
+        using Reduce
+        rcalc($question)
+    end
 end
 
 function rcalc(question)
@@ -45,6 +49,13 @@ function rcalc(question)
         return OutgoingWebhookResponse("```latex\n" * answer * "\n```")
     else
         return OutgoingWebhookResponse("`" * answer * "`")
+    end
+end
+
+function mcalc_lazy(question)
+    @eval begin
+        using Maxima
+        mcalc($question)
     end
 end
 
