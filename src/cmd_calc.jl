@@ -26,7 +26,17 @@ function rcalc(question)
     end
 
     try rcall("RESETREDUCE") catch; end
-    answer = rcall(question, :latex)
+
+    try
+        answer = rcall(question, :latex)
+    catch ex
+        if isa(ex, ReduceError)
+            return OutgoingWebhookResponse("```\n" * string(typeof(ex)) * ex.errstr * "```")
+        else
+            rethrow
+        end
+    end
+
     answer = replace(answer, "\\begin{displaymath}" => "")
     answer = replace(answer, "\\end{displaymath}" => "")
     answer = strip(answer)
@@ -49,7 +59,16 @@ function mcalc(question)
         mcall("display2d: false")
     catch
     end
-    answer = mcall(question)
+
+    try
+        answer = mcall(question)
+    catch ex
+        if isa(ex, MaximaError) || isa(ex, MaximaSyntaxError)
+            return OutgoingWebhookResponse("```\n" * string(typeof(ex)) * ex.errstr * "```")
+        else
+            rethrow
+        end
+    end
 
     if startswith(answer, "\$\$")
         answer = replace(answer, r"^[^$]*[$]{2}" => "")
