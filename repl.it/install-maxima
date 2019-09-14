@@ -2,7 +2,8 @@
 
 set -e
 
-rm -rf   $HOME/opt/maxima
+[ -d $HOME/opt/maxima ] && exit 0
+
 mkdir -p $HOME/opt/maxima
 
 curl -g -L -f -o $HOME/opt/maxima-common_5.42.2-1_all.deb https://fs.quyo.net/repl.it/klio/maxima-common_5.42.2-1_all.deb
