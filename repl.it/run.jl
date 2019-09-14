@@ -1,7 +1,7 @@
 using Pkg
 
 repl_run_klio() = begin
-    kliodir = joinpath(homedir(), "/Klio")
+    kliodir = joinpath(homedir(), "Klio")
 
     Pkg.activate(kliodir)
 
@@ -11,7 +11,7 @@ repl_run_klio() = begin
     end
 
     Klio.settings.server_host = IPv4(0)
-    Klio.settings.expl_sqlite_file = joinpath(kliodir, "/db/expl.sqlite")
+    Klio.settings.expl_sqlite_file = joinpath(kliodir, "db/expl.sqlite")
 
     Klio.run()
 end
