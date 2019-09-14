@@ -5,6 +5,7 @@ using Dates
 using TimeZones
 using Unicode
 using StringEncodings
+using ArgParse
 
 using ...Klio
 using ..Mattermost
@@ -12,7 +13,8 @@ using ..Mattermost
 const MAX_UTF16_LENGTH_ITEM = 50
 const MAX_UTF16_LENGTH_EXPL = 200
 const MAX_EXPL_COUNT = 50
-const MAX_FIND_COUNT = 50
+const MAX_FIND_EXPL_COUNT = 50
+const MAX_FIND_ITEM_COUNT = 100
 
 db_initialized = false
 
@@ -180,6 +182,14 @@ end
 # string representation, used by join and string interpolation
 Base.print(io::IO, e::ExplEntry) = print(io, "$(e.item)[" * join(e.indexes, '/') * "]: $(e.text)")
 
+struct ItemEntry
+    item::AbstractString
+    count::Int64
+end
+
+# string representation, used by join and string interpolation
+Base.print(io::IO, e::ItemEntry) = print(io, "$(e.item)($(e.count))")
+
 # unique ExplIndex subtypes used by an ExplIndexSelector
 indextypes(s::SingleExplIndexSelector) = [typeof(s.index)]
 indextypes(s::RangeExplIndexSelector) = unique([typeof(s.start), typeof(s.stop)])
@@ -222,6 +232,10 @@ function convert_expl_row(nt, index_types)
     end
 
     return ExplEntry(nt.:rowid, nt.:item, indexes, text)
+end
+
+function convert_item_row(nt)
+    return ItemEntry(nt.:item, nt.:cnt)
 end
 
 function add(req)
@@ -375,25 +389,63 @@ const QUERY_BY_EXPL_REGEXP = """
                ROW_NUMBER() OVER (PARTITION BY item_norm ORDER BY id) permanent_index,
                CASE WHEN enabled <> 0 THEN ROW_NUMBER() OVER (PARTITION BY item_norm, enabled <> 0 ORDER BY id DESC) END tail_index
         FROM t_expl
-    ) t WHERE t.enabled <> 0 AND t.expl REGEXP :expl_regexp ORDER BY id
+    ) t WHERE t.enabled <> 0 AND t.expl REGEXP :regexp ORDER BY t.id
 """
 
-const QUERY_BY_EXPL_REGEXP_PARAM = :expl_regexp
+# use the last expl of a matching item (tail_index = 1) so that items with recently added expls come last
+const QUERY_BY_ITEM_REGEXP = """
+    SELECT t.item, t.normal_index cnt FROM (
+        SELECT rowid, id, nick, item, item_norm, expl, datetime, enabled,
+            CASE WHEN enabled <> 0 THEN ROW_NUMBER() OVER (PARTITION BY item_norm, enabled <> 0 ORDER BY id) END normal_index,
+            CASE WHEN enabled <> 0 THEN ROW_NUMBER() OVER (PARTITION BY item_norm, enabled <> 0 ORDER BY id DESC) END tail_index
+        FROM t_expl
+    ) t WHERE t.enabled <> 0 AND t.item_norm REGEXP :regexp AND t.tail_index = 1 ORDER BY t.id
+"""
+
+const QUERY_REGEXP_PARAM = :regexp
+
+const FIND_ARG_PARSE_SETTINGS = ArgParseSettings(exc_handler = (s, err) -> rethrow(err))
+@add_arg_table FIND_ARG_PARSE_SETTINGS begin
+    "--keys", "-k"
+        nargs = 0
+        help = "find items whose unicode-normalized item key matches the unicode-normalized regex"
+    "regex"
+        help = "the regular expression to use"
+        required = true
+end
 
 function find(req)
-    parts = split(rstrip(req.text), limit = 2)
-    if length(parts) != 2
-        return OutgoingWebhookResponse("Syntax: $(parts[1]) <Suchbegriff>")
+    parts = split(req.text)
+
+    local args
+    try
+        args = parse_args(parts[2:end], FIND_ARG_PARSE_SETTINGS)
+    catch err
+        if isa(err, ArgParseError)
+            return OutgoingWebhookResponse("Syntax: $(parts[1]) [ -k | --keys ] <Suchbegriff>")
+        end
+        rethrow(err)
     end
 
-    expl_regexp = parts[2]
+    if args["keys"]
+        query = QUERY_BY_ITEM_REGEXP
+        query_params = Dict(QUERY_REGEXP_PARAM => item_normalize(args["regex"]))
+        conv_func = convert_item_row
+        max_count = MAX_FIND_ITEM_COUNT
+        sep = ", "
+    else
+        query = QUERY_BY_EXPL_REGEXP
+        query_params = Dict(QUERY_REGEXP_PARAM => args["regex"])
+        conv_func = nt -> convert_expl_row(nt, [NormalExplIndex, PermanentExplIndex])
+        max_count = MAX_FIND_EXPL_COUNT
+        sep = "\n"
+    end
 
     db = init_db()
 
     entries = []
-    for nt in SQLite.Query(db, QUERY_BY_EXPL_REGEXP,
-                            values = Dict(QUERY_BY_EXPL_REGEXP_PARAM => expl_regexp))
-        push!(entries, convert_expl_row(nt, [NormalExplIndex, PermanentExplIndex]))
+    for nt in SQLite.Query(db, query, values = query_params)
+        push!(entries, conv_func(nt))
     end
 
     count = length(entries)
@@ -402,14 +454,14 @@ function find(req)
     else
         if count == 1
             text = "Ich habe den folgenden Eintrag gefunden:"
-        elseif count <= MAX_FIND_COUNT
+        elseif count <= max_count
             text = "Ich habe die folgenden $count Einträge gefunden:"
         else
-            text = "Ich habe $count Einträge gefunden, das sind die letzten $MAX_FIND_COUNT:"
-            entries = entries[end-MAX_FIND_COUNT+1:end]
+            text = "Ich habe $count Einträge gefunden, das sind die letzten $max_count:"
+            entries = entries[end-max_count+1:end]
         end
 
-        text = "$text\n```\n" * join(entries, '\n') * "\n```"
+        text = "$text\n```\n" * join(entries, sep) * "\n```"
     end
 
     return OutgoingWebhookResponse(text)
