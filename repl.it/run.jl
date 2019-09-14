@@ -1,11 +1,19 @@
 using Pkg
 
-Pkg.activate("./Klio")
+repl_run_klio() = begin
+    kliodir = joinpath(homedir(), "/Klio")
 
-using Klio
-using Sockets
+    Pkg.activate(kliodir)
 
-Klio.settings.server_host = IPv4(0)
-Klio.settings.expl_sqlite_file = "~/db/expl.sqlite"
+    @eval begin
+        using Klio
+        using Sockets
+    end
 
-Klio.run()
+    Klio.settings.server_host = IPv4(0)
+    Klio.settings.expl_sqlite_file = joinpath(kliodir, "/db/expl.sqlite")
+
+    Klio.run()
+end
+
+repl_run_klio()

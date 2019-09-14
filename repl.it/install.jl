@@ -1,15 +1,23 @@
 using Pkg
 
-Pkg.activate("./Klio")
-Pkg.resolve()
+repl_install_klio() = begin
+    kliodir = joinpath(homedir(), "/Klio")
 
-run(`curl -g -L -f -o /home/runner/.julia/packages/Reduce/TI9IX/deps/reduce.tar.gz https://fs.quyo.net/repl.it/klio/reduce-csl_4567_amd64.tgz`)
-run(`chmod u+w /home/runner/.julia/packages/Reduce/TI9IX/deps/build.jl`)
-run(`sed -i -e 's|[^#]download(|#download(|g' /home/runner/.julia/packages/Reduce/TI9IX/deps/build.jl`)
-Pkg.build("Reduce")
+    Pkg.activate(kliodir)
+    Pkg.resolve()
 
-run(`./install-maxima`)
+    reducedir = joinpath(homedir(), "/.julia/packages/Reduce/TI9IX")
+    run(`curl -g -L -f -o $reducedir/deps/reduce.tar.gz https://fs.quyo.net/repl.it/klio/reduce-csl_4567_amd64.tgz`)
+    run(`chmod u+w $reducedir/deps/build.jl`)
+    run(`sed -i -e 's|[^#]download(|#download(|g' $reducedir/deps/build.jl`)
+    Pkg.build("Reduce")
 
-Pkg.add(PackageSpec(url="https://github.com/chschu/SQLite.jl.git"))
+    repldir = joinpath(kliodir, "/repl.it")
+    run(`$repldir/install-maxima`)
 
-# ] precompile
+    Pkg.add(PackageSpec(url="https://github.com/chschu/SQLite.jl.git"))
+
+    # ] precompile
+end
+
+repl_install_klio()
