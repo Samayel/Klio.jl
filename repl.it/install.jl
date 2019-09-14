@@ -1,9 +1,6 @@
 using Pkg
 
 repl_install_klio() = begin
-    kliodir = joinpath(homedir(), "Klio")
-
-    Pkg.activate(kliodir)
     Pkg.resolve()
 
     reducedir = joinpath(homedir(), ".julia/packages/Reduce/TI9IX")
@@ -12,7 +9,6 @@ repl_install_klio() = begin
     run(`sed -i -e 's|[^#]download(|#download(|g' $reducedir/deps/build.jl`)
     Pkg.build("Reduce")
 
-    repldir = joinpath(kliodir, "repl.it")
     run(`$repldir/install-maxima`)
 
     Pkg.add(PackageSpec(url="https://github.com/chschu/SQLite.jl.git"))
