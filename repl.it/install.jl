@@ -11,7 +11,9 @@ repl_install_klio() = begin
         Pkg.build("Reduce")
     end
 
-    run(`$repldir/install-maxima`)
+    if !isdir(joinpath(homedir(), "opt/maxima"))
+        run(`$repldir/install-maxima`)
+    end
 
     Pkg.add(PackageSpec(url="https://github.com/chschu/SQLite.jl.git"))
 
