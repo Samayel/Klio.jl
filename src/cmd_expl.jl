@@ -55,7 +55,7 @@ end
 # common query to determine the different indexes
 # returns all entries (including disabled ones) unordered
 const QUERY_BY_ITEM_NORM = """
-	SELECT rowid, id, nick, item, item_norm, expl, datetime, enabled,
+	SELECT rowid rowid, id, nick, item, item_norm, expl, datetime, enabled,
 		   CASE WHEN enabled <> 0 THEN ROW_NUMBER() OVER (PARTITION BY enabled <> 0 ORDER BY id) END normal_index,
 		   ROW_NUMBER() OVER (ORDER BY id) permanent_index,
            CASE WHEN enabled <> 0 THEN ROW_NUMBER() OVER (PARTITION BY enabled <> 0 ORDER BY id DESC) END tail_index
@@ -383,23 +383,18 @@ end
 
 # cannot use QUERY_BY_ITEM_NORM, because the indexes need to be partitioned by item_norm
 const QUERY_BY_EXPL_REGEXP = """
-    SELECT t.* FROM (
-        SELECT rowid, id, nick, item, item_norm, expl, datetime, enabled,
-               CASE WHEN enabled <> 0 THEN ROW_NUMBER() OVER (PARTITION BY item_norm, enabled <> 0 ORDER BY id) END normal_index,
-               ROW_NUMBER() OVER (PARTITION BY item_norm ORDER BY id) permanent_index,
-               CASE WHEN enabled <> 0 THEN ROW_NUMBER() OVER (PARTITION BY item_norm, enabled <> 0 ORDER BY id DESC) END tail_index
-        FROM t_expl
-    ) t WHERE t.enabled <> 0 AND t.expl REGEXP :regexp ORDER BY t.id
+    SELECT t.rowid rowid, t.id, t.nick, t.item, t.expl, t.datetime,
+           (SELECT COUNT(1) FROM t_expl WHERE item_norm = t.item_norm AND enabled <> 0 AND id <= t.id) normal_index,
+           (SELECT COUNT(1) FROM t_expl WHERE item_norm = t.item_norm AND id <= t.id) permanent_index,
+           (SELECT COUNT(1) FROM t_expl WHERE item_norm = t.item_norm AND enabled <> 0 AND id >= t.id) tail_index
+    FROM t_expl t WHERE t.expl REGEXP :regexp AND t.enabled <> 0 ORDER BY t.id
 """
 
-# use the last expl of a matching item (tail_index = 1) so that items with recently added expls come last
+# use the last item to represent a matching item_norm
 const QUERY_BY_ITEM_REGEXP = """
-    SELECT t.item, t.normal_index cnt FROM (
-        SELECT rowid, id, nick, item, item_norm, expl, datetime, enabled,
-            CASE WHEN enabled <> 0 THEN ROW_NUMBER() OVER (PARTITION BY item_norm, enabled <> 0 ORDER BY id) END normal_index,
-            CASE WHEN enabled <> 0 THEN ROW_NUMBER() OVER (PARTITION BY item_norm, enabled <> 0 ORDER BY id DESC) END tail_index
-        FROM t_expl
-    ) t WHERE t.enabled <> 0 AND t.item_norm REGEXP :regexp AND t.tail_index = 1 ORDER BY t.id
+    SELECT (SELECT item FROM t_expl WHERE item_norm = t.item_norm ORDER BY id DESC LIMIT 1) item,
+           COUNT(1) cnt
+    FROM t_expl t WHERE t.item_norm REGEXP :regexp AND t.enabled <> 0 GROUP BY t.item_norm ORDER BY MAX(t.id)
 """
 
 const QUERY_REGEXP_PARAM = :regexp
