@@ -15,6 +15,7 @@ const MAX_UTF16_LENGTH_EXPL = 200
 const MAX_EXPL_COUNT = 50
 const MAX_FIND_EXPL_COUNT = 50
 const MAX_FIND_ITEM_COUNT = 100
+const MAX_TOPEXPL = 100
 
 db_initialized = false
 
@@ -457,6 +458,44 @@ function find(req)
         end
 
         text = "$text\n```\n" * join(entries, sep) * "\n```"
+    end
+
+    return OutgoingWebhookResponse(text)
+end
+
+const QUERY_TOPEXPL = """
+    SELECT (SELECT item FROM t_expl WHERE item_norm = t.item_norm ORDER BY id DESC LIMIT 1) item,
+           COUNT(1) cnt
+    FROM t_expl t WHERE t.enabled <> 0 GROUP BY t.item_norm ORDER BY 2 DESC, MAX(t.id) LIMIT :limit
+"""
+
+const QUERY_TOPEXPL_LIMIT_PARAM = :limit
+
+function topexpl(req)
+    parts = split(req.text)
+    if length(parts) > 1
+        return OutgoingWebhookResponse("Syntax: $(parts[1])")
+    end
+
+    db = init_db()
+
+    entries = []
+    for nt in SQLite.Query(db, QUERY_TOPEXPL,
+                            values = Dict(QUERY_TOPEXPL_LIMIT_PARAM => MAX_TOPEXPL))
+        push!(entries, convert_item_row(nt))
+    end
+
+    count = length(entries)
+    if count == 0
+        text = "Ich habe leider keinen Eintrag gefunden."
+    else
+        if count == 1
+            text = "Ich habe den folgenden wichtigsten Eintrag gefunden:"
+        else
+            text = "Ich habe die folgenden $count wichtigsten Einträge gefunden:"
+        end
+
+        text = "$text\n```\n" * join(entries, ", ") * "\n```"
     end
 
     return OutgoingWebhookResponse(text)
