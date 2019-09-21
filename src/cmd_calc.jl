@@ -5,9 +5,8 @@ using ..Mattermost
 reduce_initialized = false
 
 function calc(req)
-    startswith(req.text, "!calc --maxima ") && return mcalc_lazy(replace(req.text, "!calc --maxima " => ""))
-    startswith(req.text, "!calc --reduce ") && return rcalc_lazy(replace(req.text, "!calc --reduce " => ""))
-    mcalc_lazy(replace(req.text, "!calc " => ""))
+    startswith(req.text, "!calc --reduce ") && return req.text |> rcalc_lazy
+    req.text |> mcalc_lazy
 end
 
 function rcalc_lazy(question)
@@ -18,6 +17,9 @@ function rcalc_lazy(question)
 end
 
 function rcalc(question)
+    question = replace(question, "!calc --reduce " => "")
+    question = strip(question, ['`', ' '])
+
     if occursin(r"(in|out)\s+"i, question)
         throw(ReduceError("Forbidden"))
     end
@@ -32,7 +34,7 @@ function rcalc(question)
     try rcall("RESETREDUCE") catch; end
 
     try
-        answer = rcall(question, :latex)
+        answer = rcall(question, :latex) |> string
     catch ex
         if isa(ex, ReduceError)
             return OutgoingWebhookResponse("```\n" * string(typeof(ex)) * ex.errstr * "```")
@@ -60,6 +62,10 @@ function mcalc_lazy(question)
 end
 
 function mcalc(question)
+    question = replace(question, "!calc --maxima " => "")
+    question = replace(question, "!calc " => "")
+    question = strip(question, ['`', ' '])
+
     if occursin(r"(batch[a-z_]*|file[a-z_]*|load[a-z_]+|pathname[a-z_]*|save|stringout|with_stdout|[a-z_]*file)\s*\("i, question)
         throw(MaximaError("Forbidden"))
     end
@@ -72,7 +78,7 @@ function mcalc(question)
     end
 
     try
-        answer = mcall(question)
+        answer = mcall(question) |> string
     catch ex
         if isa(ex, MaximaError) || isa(ex, MaximaSyntaxError)
             return OutgoingWebhookResponse("```\n" * string(typeof(ex)) * ex.errstr * "```")
