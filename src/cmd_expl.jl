@@ -5,6 +5,7 @@ using Dates
 using TimeZones
 using Unicode
 using StringEncodings
+using ArgParse
 
 using ...Klio
 using ..Mattermost
@@ -12,6 +13,9 @@ using ..Mattermost
 const MAX_UTF16_LENGTH_ITEM = 50
 const MAX_UTF16_LENGTH_EXPL = 200
 const MAX_EXPL_COUNT = 50
+const MAX_FIND_EXPL_COUNT = 50
+const MAX_FIND_ITEM_COUNT = 100
+const MAX_TOPEXPL = 100
 
 db_initialized = false
 
@@ -43,13 +47,16 @@ function init_db()
         db_initialized = true
     end
 
+    # this should happen automatically, according to the SQLite.jl docs
+    SQLite.register(db, SQLite.regexp, nargs = 2, name = "regexp")
+
     return db
 end
 
 # common query to determine the different indexes
 # returns all entries (including disabled ones) unordered
 const QUERY_BY_ITEM_NORM = """
-	SELECT rowid, id, nick, item, item_norm, expl, datetime, enabled,
+	SELECT rowid rowid, id, nick, item, item_norm, expl, datetime, enabled,
 		   CASE WHEN enabled <> 0 THEN ROW_NUMBER() OVER (PARTITION BY enabled <> 0 ORDER BY id) END normal_index,
 		   ROW_NUMBER() OVER (ORDER BY id) permanent_index,
            CASE WHEN enabled <> 0 THEN ROW_NUMBER() OVER (PARTITION BY enabled <> 0 ORDER BY id DESC) END tail_index
@@ -176,6 +183,14 @@ end
 # string representation, used by join and string interpolation
 Base.print(io::IO, e::ExplEntry) = print(io, "$(e.item)[" * join(e.indexes, '/') * "]: $(e.text)")
 
+struct ItemEntry
+    item::AbstractString
+    count::Int64
+end
+
+# string representation, used by join and string interpolation
+Base.print(io::IO, e::ItemEntry) = print(io, "$(e.item)($(e.count))")
+
 # unique ExplIndex subtypes used by an ExplIndexSelector
 indextypes(s::SingleExplIndexSelector) = [typeof(s.index)]
 indextypes(s::RangeExplIndexSelector) = unique([typeof(s.start), typeof(s.stop)])
@@ -220,6 +235,9 @@ function convert_expl_row(nt, index_types)
     return ExplEntry(nt.:rowid, nt.:item, indexes, text)
 end
 
+function convert_item_row(nt)
+    return ItemEntry(nt.:item, nt.:cnt)
+end
 
 function add(req)
     parts = split(rstrip(req.text), limit = 3)
@@ -359,6 +377,125 @@ function del(req)
         text = "Ich habe den folgenden Eintrag gelöscht:\n```\n$(entries[1])\n```"
     else
         error("more than one entry matched request \"$(req.text)\"")
+    end
+
+    return OutgoingWebhookResponse(text)
+end
+
+# cannot use QUERY_BY_ITEM_NORM, because the indexes need to be partitioned by item_norm
+const QUERY_BY_EXPL_REGEXP = """
+    SELECT t.rowid rowid, t.id, t.nick, t.item, t.expl, t.datetime,
+           (SELECT COUNT(1) FROM t_expl WHERE item_norm = t.item_norm AND enabled <> 0 AND id <= t.id) normal_index,
+           (SELECT COUNT(1) FROM t_expl WHERE item_norm = t.item_norm AND id <= t.id) permanent_index,
+           (SELECT COUNT(1) FROM t_expl WHERE item_norm = t.item_norm AND enabled <> 0 AND id >= t.id) tail_index
+    FROM t_expl t WHERE t.expl REGEXP :regexp AND t.enabled <> 0 ORDER BY t.id
+"""
+
+# use the last item to represent a matching item_norm
+const QUERY_BY_ITEM_REGEXP = """
+    SELECT (SELECT item FROM t_expl WHERE item_norm = t.item_norm ORDER BY id DESC LIMIT 1) item,
+           COUNT(1) cnt
+    FROM t_expl t WHERE t.item_norm REGEXP :regexp AND t.enabled <> 0 GROUP BY t.item_norm ORDER BY MAX(t.id)
+"""
+
+const QUERY_REGEXP_PARAM = :regexp
+
+const FIND_ARG_PARSE_SETTINGS = ArgParseSettings(exc_handler = (s, err) -> rethrow(err))
+@add_arg_table FIND_ARG_PARSE_SETTINGS begin
+    "--keys", "-k"
+        nargs = 0
+        help = "find items whose unicode-normalized item key matches the unicode-normalized regex"
+    "regex"
+        help = "the regular expression to use"
+        required = true
+end
+
+function find(req)
+    parts = split(req.text)
+
+    local args
+    try
+        args = parse_args(parts[2:end], FIND_ARG_PARSE_SETTINGS)
+    catch err
+        if isa(err, ArgParseError)
+            return OutgoingWebhookResponse("Syntax: $(parts[1]) [ -k | --keys ] <Suchbegriff>")
+        end
+        rethrow(err)
+    end
+
+    if args["keys"]
+        query = QUERY_BY_ITEM_REGEXP
+        query_params = Dict(QUERY_REGEXP_PARAM => item_normalize(args["regex"]))
+        conv_func = convert_item_row
+        max_count = MAX_FIND_ITEM_COUNT
+        sep = ", "
+    else
+        query = QUERY_BY_EXPL_REGEXP
+        query_params = Dict(QUERY_REGEXP_PARAM => args["regex"])
+        conv_func = nt -> convert_expl_row(nt, [NormalExplIndex, PermanentExplIndex])
+        max_count = MAX_FIND_EXPL_COUNT
+        sep = "\n"
+    end
+
+    db = init_db()
+
+    entries = []
+    for nt in SQLite.Query(db, query, values = query_params)
+        push!(entries, conv_func(nt))
+    end
+
+    count = length(entries)
+    if count == 0
+        text = "Ich habe leider keinen Eintrag gefunden."
+    else
+        if count == 1
+            text = "Ich habe den folgenden Eintrag gefunden:"
+        elseif count <= max_count
+            text = "Ich habe die folgenden $count Einträge gefunden:"
+        else
+            text = "Ich habe $count Einträge gefunden, das sind die letzten $max_count:"
+            entries = entries[end-max_count+1:end]
+        end
+
+        text = "$text\n```\n" * join(entries, sep) * "\n```"
+    end
+
+    return OutgoingWebhookResponse(text)
+end
+
+const QUERY_TOPEXPL = """
+    SELECT (SELECT item FROM t_expl WHERE item_norm = t.item_norm ORDER BY id DESC LIMIT 1) item,
+           COUNT(1) cnt
+    FROM t_expl t WHERE t.enabled <> 0 GROUP BY t.item_norm ORDER BY 2 DESC, MAX(t.id) LIMIT :limit
+"""
+
+const QUERY_TOPEXPL_LIMIT_PARAM = :limit
+
+function topexpl(req)
+    parts = split(req.text)
+    if length(parts) > 1
+        return OutgoingWebhookResponse("Syntax: $(parts[1])")
+    end
+
+    db = init_db()
+
+    entries = []
+    for nt in SQLite.Query(db, QUERY_TOPEXPL,
+                            values = Dict(QUERY_TOPEXPL_LIMIT_PARAM => MAX_TOPEXPL))
+        push!(entries, convert_item_row(nt))
+    end
+
+    count = length(entries)
+    if count == 0
+        text = "Ich habe leider keinen Eintrag gefunden."
+    else
+        if count == 1
+            text = "Ich habe den folgenden wichtigsten Eintrag gefunden:"
+        else
+            text = "Ich habe die folgenden $count wichtigsten Einträge gefunden:"
+        end
+
+        text = "$text\n```\n" * join(entries, ", ") * "\n```"
     end
 
     return OutgoingWebhookResponse(text)
