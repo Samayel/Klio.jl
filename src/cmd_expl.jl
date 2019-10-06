@@ -369,7 +369,7 @@ function www_expl(req)
     end
 
     text = HTTP.Strings.escapehtml(text)
-    text = "<!doctype html><html><body><pre>$text</pre></body></html>"
+    text = "<!doctype html><html><head><meta charset=\"utf-8\"></head><body><pre>$text</pre></body></html>"
 
     return HTTP.Response(text)
 end
