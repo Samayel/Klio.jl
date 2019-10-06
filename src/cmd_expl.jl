@@ -12,9 +12,9 @@ using ...Klio
 using ..Mattermost
 
 const MAX_UTF16_LENGTH_ITEM = 50
-const MAX_UTF16_LENGTH_EXPL = 200
-const MAX_EXPL_COUNT = 50
-const MAX_FIND_EXPL_COUNT = 50
+const MAX_UTF16_LENGTH_EXPL = 500
+const MAX_EXPL_COUNT = 20
+const MAX_FIND_EXPL_COUNT = 20
 const MAX_FIND_ITEM_COUNT = 100
 const MAX_TOPEXPL = 100
 
@@ -324,7 +324,7 @@ function expl(req)
         elseif count <= MAX_EXPL_COUNT
             text = "Ich habe die folgenden $count Einträge gefunden:"
         else
-            text = "Ich habe $count Einträge gefunden, das sind die letzten $MAX_EXPL_COUNT:"
+            text = "Ich habe $count Einträge gefunden (https://expl.s2000.at/$(HTTP.URIs.escapeuri(item))), das sind die letzten $MAX_EXPL_COUNT:"
             entries = entries[end-MAX_EXPL_COUNT+1:end]
         end
 
@@ -344,7 +344,8 @@ function www_expl(req)
     # determine index types used in selectors
     index_types = union(map(indextypes, selectors)...)
 
-    item = HTTP.URIs.unescapeuri(req.target[2:end])
+    item = replace(req.target, "/expl/" => "")
+    item = HTTP.URIs.unescapeuri(item)
     item_norm = item_normalize(item)
 
     db = init_db()
@@ -493,8 +494,11 @@ function find(req)
             text = "Ich habe den folgenden Eintrag gefunden:"
         elseif count <= max_count
             text = "Ich habe die folgenden $count Einträge gefunden:"
-        else
+        elseif args["keys"]
             text = "Ich habe $count Einträge gefunden, das sind die letzten $max_count:"
+            entries = entries[end-max_count+1:end]
+        else
+            text = "Ich habe $count Einträge gefunden (https://find.s2000.at/$(HTTP.URIs.escapeuri(args["regex"]))), das sind die letzten $max_count:"
             entries = entries[end-max_count+1:end]
         end
 
@@ -502,6 +506,42 @@ function find(req)
     end
 
     return OutgoingWebhookResponse(text)
+end
+
+function www_find(req)
+    item = replace(req.target, "/find/" => "")
+    item = HTTP.URIs.unescapeuri(item)
+
+    query = QUERY_BY_EXPL_REGEXP
+    query_params = Dict(QUERY_REGEXP_PARAM => item)
+    conv_func = nt -> convert_expl_row(nt, [NormalExplIndex, PermanentExplIndex])
+    sep = "\n"
+
+    db = init_db()
+
+    entries = []
+    for nt in SQLite.Query(db, query, values = query_params)
+        push!(entries, conv_func(nt))
+    end
+
+    count = length(entries)
+    if count == 0
+        text = "Ich habe leider keinen Eintrag gefunden."
+    else
+        if count == 1
+            text = "Ich habe den folgenden Eintrag gefunden:"
+        else
+            text = "Ich habe die folgenden $count Einträge gefunden:"
+        end
+
+        text = "$text\n" * join(entries, sep)
+    end
+
+
+    text = HTTP.Strings.escapehtml(text)
+    text = "<!doctype html><html><head><meta charset=\"utf-8\"></head><body><pre>$text</pre></body></html>"
+
+    return HTTP.Response(text)
 end
 
 const QUERY_TOPEXPL = """

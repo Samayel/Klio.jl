@@ -51,7 +51,8 @@ function run()
     HTTP.@register(klioRouter, "POST", "/find", wrap(Expl.find))
     HTTP.@register(klioRouter, "POST", "/topexpl", wrap(Expl.topexpl))
 
-    HTTP.@register(klioRouter, "GET", "/", Expl.www_expl)
+    HTTP.@register(klioRouter, "GET", "/expl", Expl.www_expl)
+    HTTP.@register(klioRouter, "GET", "/find", Expl.www_find)
 
     HTTP.serve(klioRouter, settings.server_host, settings.server_port, verbose = settings.server_verbose)
 end
