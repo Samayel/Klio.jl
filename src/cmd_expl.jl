@@ -344,7 +344,7 @@ function www_expl(req)
     # determine index types used in selectors
     index_types = union(map(indextypes, selectors)...)
 
-    item = req.target[2:end]
+    item = HTTP.URIs.unescapeuri(req.target[2:end])
     item_norm = item_normalize(item)
 
     db = init_db()
