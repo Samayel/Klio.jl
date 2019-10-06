@@ -31,7 +31,7 @@ function rcalc(question)
         reduce_initialized = true
     end
 
-    try rcall("RESETREDUCE") catch; end
+#   try rcall("RESETREDUCE") catch; end
 
     try
         answer = rcall(question, :latex) |> string
