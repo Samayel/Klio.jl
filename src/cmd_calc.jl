@@ -34,7 +34,7 @@ function rcalc(question)
 #   try rcall("RESETREDUCE") catch; end
 
     try
-        answer = rcall(question, :latex) |> string
+        answer = rcall(String(question), :latex) |> string
     catch ex
         if isa(ex, ReduceError)
             return OutgoingWebhookResponse("```\n" * string(typeof(ex)) * ex.errstr * "```")
@@ -78,7 +78,7 @@ function mcalc(question)
     end
 
     try
-        answer = mcall(question) |> string
+        answer = mcall(String(question)) |> string
     catch ex
         if isa(ex, MaximaError) || isa(ex, MaximaSyntaxError)
             return OutgoingWebhookResponse("```\n" * string(typeof(ex)) * ex.errstr * "```")
