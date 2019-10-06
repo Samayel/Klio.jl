@@ -6,6 +6,7 @@ using TimeZones
 using Unicode
 using StringEncodings
 using ArgParse
+using HTTP
 
 using ...Klio
 using ..Mattermost
@@ -331,6 +332,46 @@ function expl(req)
     end
 
     return OutgoingWebhookResponse(text)
+end
+
+function www_expl(req)
+    # default selector (all)
+    selectors = [AllExplIndexSelector()]
+
+    # convert selectors to SQL
+    selectors_sql = sqlify(selectors)
+
+    # determine index types used in selectors
+    index_types = union(map(indextypes, selectors)...)
+
+    item = req.target[2:end]
+    item_norm = item_normalize(item)
+
+    db = init_db()
+
+    entries = []
+    for nt in SQLite.Query(db, "SELECT * FROM ($QUERY_BY_ITEM_NORM) WHERE enabled <> 0 AND ($selectors_sql) ORDER BY id",
+                            values = Dict(QUERY_BY_ITEM_NORM_PARAM => item_norm))
+        push!(entries, convert_expl_row(nt, index_types))
+    end
+
+    count = length(entries)
+    if count == 0
+        text = "Ich habe leider keinen Eintrag gefunden."
+    else
+        if count == 1
+            text = "Ich habe den folgenden Eintrag gefunden:"
+        else
+            text = "Ich habe die folgenden $count Einträge gefunden:"
+        end
+
+        text = "$text\n" * join(entries, '\n')
+    end
+
+    text = HTTP.Strings.escapehtml(text)
+    text = "<!doctype html><html><body><pre>$text</pre></body></html>"
+
+    return HTTP.Response(text)
 end
 
 function del(req)

@@ -11,7 +11,6 @@ include("mattermost_types.jl")
 include("cmd_calc.jl")
 include("cmd_choose.jl")
 include("cmd_time.jl")
-
 include("cmd_expl.jl")
 
 using .Mattermost
@@ -51,6 +50,8 @@ function run()
     HTTP.@register(klioRouter, "POST", "/del", wrap(Expl.del))
     HTTP.@register(klioRouter, "POST", "/find", wrap(Expl.find))
     HTTP.@register(klioRouter, "POST", "/topexpl", wrap(Expl.topexpl))
+
+    HTTP.@register(klioRouter, "GET", "/", Expl.www_expl)
 
     HTTP.serve(klioRouter, settings.server_host, settings.server_port, verbose = settings.server_verbose)
 end
