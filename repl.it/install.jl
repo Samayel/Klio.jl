@@ -15,9 +15,8 @@ repl_install_klio() = begin
         run(`$repldir/install-maxima`)
     end
 
-    Pkg.add(PackageSpec(url="https://github.com/chschu/SQLite.jl.git"))
-
-    # ] precompile
+    pkg"add SQLite#master"
+    pkg"precompile"
 end
 
 repl_install_klio()
