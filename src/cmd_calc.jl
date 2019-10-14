@@ -5,8 +5,42 @@ using ..Mattermost
 reduce_initialized = false
 
 function calc(req)
-    startswith(req.text, "!calc --reduce ") && return req.text |> rcalc_lazy
+    startswith(req.text, "!calc --wolfram ") && return req.text |> wcalc_lazy
+    startswith(req.text, "!calc --reduce ")  && return req.text |> rcalc_lazy
     req.text |> mcalc_lazy
+end
+
+function wcalc_lazy(question)
+    @eval begin
+        using MathLink
+        wcalc($question)
+    end
+end
+
+function wcalc(question)
+    question = replace(question, "!calc --wolfram " => "")
+    question = strip(question, ['`', ' '])
+
+    question = question * " // TeXForm // ToString"
+
+    try "Remove[\"Global`*\"]" |> MathLink.parseexpr |> weval catch; end
+
+    local answer
+    try
+        answer = question |> MathLink.parseexpr |> weval |> string
+    catch ex
+        if isa(ex, MathLink.MathLinkError)
+            return OutgoingWebhookResponse("```\n" * string(typeof(ex)) * "\n" * ex.msg * "```")
+        else
+            rethrow
+        end
+    end
+
+    if occursin('^', answer) || occursin('_', answer) || occursin('\\', answer) || occursin('\n', answer)
+        return OutgoingWebhookResponse("```latex\n" * answer * "\n```")
+    else
+        return OutgoingWebhookResponse("`" * answer * "`")
+    end
 end
 
 function rcalc_lazy(question)
@@ -33,6 +67,7 @@ function rcalc(question)
 
 #   try rcall("RESETREDUCE") catch; end
 
+    local answer
     try
         answer = rcall(String(question), :latex) |> string
     catch ex
@@ -77,6 +112,7 @@ function mcalc(question)
     catch
     end
 
+    local answer
     try
         answer = mcall(String(question)) |> string
     catch ex
