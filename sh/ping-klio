@@ -2,7 +2,8 @@
 
 set -e
 
-curl -X POST -H "Content-Type: application/json" -d '{"text":"!time","user_name":"Anonymous"}'              --silent --show-error http://127.0.0.1:8000/time | egrep '^{"text"'
-curl -X POST -H "Content-Type: application/json" -d '{"text":"!calc --maxima 1+1","user_name":"Anonymous"}' --silent --show-error http://127.0.0.1:8000/calc | egrep '^{"text"'
-curl -X POST -H "Content-Type: application/json" -d '{"text":"!calc --reduce 1+1","user_name":"Anonymous"}' --silent --show-error http://127.0.0.1:8000/calc | egrep '^{"text"'
+curl -X POST -H "Content-Type: application/json" -d '{"text":"!time","user_name":"Anonymous"}'               --silent --show-error http://127.0.0.1:8000/time | egrep '^{"text"'
+curl -X POST -H "Content-Type: application/json" -d '{"text":"!calc --wolfram 1+1","user_name":"Anonymous"}' --silent --show-error http://127.0.0.1:8000/calc | egrep '^{"text"'
+curl -X POST -H "Content-Type: application/json" -d '{"text":"!calc --maxima  1+1","user_name":"Anonymous"}' --silent --show-error http://127.0.0.1:8000/calc | egrep '^{"text"'
+curl -X POST -H "Content-Type: application/json" -d '{"text":"!calc --reduce  1+1","user_name":"Anonymous"}' --silent --show-error http://127.0.0.1:8000/calc | egrep '^{"text"'
 echo Ok.

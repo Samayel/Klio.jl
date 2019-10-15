@@ -2,6 +2,9 @@
 
 set -e
 
+curl -X POST -H "Content-Type: application/json" -d '{"text":"!calc --wolfram 1+1",                                      "user_name":"Anonymous"}' --silent --show-error http://127.0.0.1:8000/calc | grep --fixed-strings '{"text":"`2`"}'
+curl -X POST -H "Content-Type: application/json" -d '{"text":"!calc --wolfram Solve[x^2+p*x+q==0,x]",                    "user_name":"Anonymous"}' --silent --show-error http://127.0.0.1:8000/calc | grep --fixed-strings '{"text":"```latex\n\\left\\{\\left\\{x\\to \\frac{1}{2} \\left(-\\sqrt{p^2-4 q}-p\\right)\\right\\},\\left\\{x\\to \\frac{1}{2} \\left(\\sqrt{p^2-4 q}-p\\right)\\right\\}\\right\\}\n```"}'
+
 curl -X POST -H "Content-Type: application/json" -d '{"text":"!calc --maxima 1+1",                                       "user_name":"Anonymous"}' --silent --show-error http://127.0.0.1:8000/calc | grep --fixed-strings '{"text":"`2`"}'
 curl -X POST -H "Content-Type: application/json" -d '{"text":"!calc --maxima (a+a)^(2+2) $ tex(%)",                      "user_name":"Anonymous"}' --silent --show-error http://127.0.0.1:8000/calc | grep --fixed-strings '{"text":"```latex\n16\\,a^4\n```"}'
 curl -X POST -H "Content-Type: application/json" -d '{"text":"!calc --maxima sum (2^i + i^2, i, 0, n), simpsum $ tex(%)","user_name":"Anonymous"}' --silent --show-error http://127.0.0.1:8000/calc | grep --fixed-strings '{"text":"```latex\n2^{n+1}+{{2\\,n^3+3\\,n^2+n}\\over{6}}-1\n```"}'
