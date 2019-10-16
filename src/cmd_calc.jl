@@ -7,7 +7,8 @@ reduce_initialized = false
 function calc(req)
     startswith(req.text, "!calc --wolfram ") && return req.text |> wcalc_lazy
     startswith(req.text, "!calc --reduce ")  && return req.text |> rcalc_lazy
-    req.text |> mcalc_lazy
+    startswith(req.text, "!calc --maxima ")  && return req.text |> mcalc_lazy
+    req.text |> wcalc_lazy
 end
 
 function wcalc_lazy(question)
@@ -19,6 +20,7 @@ end
 
 function wcalc(question)
     question = replace(question, "!calc --wolfram " => "")
+    question = replace(question, "!calc " => "")
     question = strip(question, ['`', ' '])
 
     question = question * " // TeXForm // ToString"
@@ -52,6 +54,7 @@ end
 
 function rcalc(question)
     question = replace(question, "!calc --reduce " => "")
+    question = replace(question, "!calc " => "")
     question = strip(question, ['`', ' '])
 
     if occursin(r"(in|out)\s+"i, question)
