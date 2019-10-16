@@ -324,7 +324,7 @@ function expl(req)
         elseif count <= MAX_EXPL_COUNT
             text = "Ich habe die folgenden $count Einträge gefunden:"
         else
-            text = "Ich habe $count Einträge gefunden (https://expl.s2000.at/$(HTTP.URIs.escapeuri(item))), das sind die letzten $MAX_EXPL_COUNT:"
+            text = "Ich habe $count Einträge gefunden (https://expl.klio.s2000.at/$(HTTP.URIs.escapeuri(item))), das sind die letzten $MAX_EXPL_COUNT:"
             entries = entries[end-MAX_EXPL_COUNT+1:end]
         end
 
@@ -498,7 +498,7 @@ function find(req)
             text = "Ich habe $count Einträge gefunden, das sind die letzten $max_count:"
             entries = entries[end-max_count+1:end]
         else
-            text = "Ich habe $count Einträge gefunden (https://find.s2000.at/$(HTTP.URIs.escapeuri(args["regex"]))), das sind die letzten $max_count:"
+            text = "Ich habe $count Einträge gefunden (https://find.klio.s2000.at/$(HTTP.URIs.escapeuri(args["regex"]))), das sind die letzten $max_count:"
             entries = entries[end-max_count+1:end]
         end
 
