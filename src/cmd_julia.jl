@@ -28,7 +28,7 @@ end
 
 function render(answer)
     if !occursin('^', answer) && !occursin('_', answer) && !occursin('\\', answer)
-        return "`$answer`"
+        return occursin('\n', answer) ? "```\n$answer\n```" : "`$answer`"
     end
 
     try
