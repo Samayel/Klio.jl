@@ -10,6 +10,7 @@ include("mattermost_types.jl")
 
 include("cmd_calc.jl")
 include("cmd_choose.jl")
+include("cmd_julia.jl")
 include("cmd_time.jl")
 include("cmd_expl.jl")
 
@@ -43,6 +44,7 @@ function run()
 
     HTTP.@register(klioRouter, "POST", "/calc", wrap(Calc.calc))
     HTTP.@register(klioRouter, "POST", "/choose", wrap(Choose.choose))
+    HTTP.@register(klioRouter, "POST", "/julia", wrap(Julia.julia))
     HTTP.@register(klioRouter, "POST", "/time", wrap(Time.time))
 
     HTTP.@register(klioRouter, "POST", "/add", wrap(Expl.add))
