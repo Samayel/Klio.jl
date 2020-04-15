@@ -1,5 +1,6 @@
 module Expl
 
+using DBInterface
 using SQLite
 using Dates
 using TimeZones
@@ -31,7 +32,7 @@ function init_db()
         # nick is NULL for some old entries
         # datetime (unix timestamp) is NULL for some old entries
         # item_norm is a normalized variant of item
-        SQLite.execute!(db, """
+        SQLite.execute(db, """
             CREATE TABLE IF NOT EXISTS t_expl (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 nick TEXT,
@@ -258,19 +259,19 @@ function add(req)
 
     db = init_db()
 
-    SQLite.Query(db, "INSERT INTO t_expl(nick, item, item_norm, expl, datetime, enabled) VALUES (:nick, :item, :item_norm, :expl, :datetime, :enabled)",
-        values = Dict(
+    DBInterface.execute(db, "INSERT INTO t_expl(nick, item, item_norm, expl, datetime, enabled) VALUES (:nick, :item, :item_norm, :expl, :datetime, :enabled)",
+        (; Dict(
             :nick => req.user_name,
             :item => item,
             :item_norm => item_norm,
             :expl => expl,
             :datetime => Dates.datetime2epochms(Dates.now(Dates.UTC)),
             :enabled => 1
-        ))
+        )...))
 
     entries = []
-    for nt in SQLite.Query(db, "SELECT * FROM ($QUERY_BY_ITEM_NORM) WHERE enabled <> 0 AND rowid = last_insert_rowid()",
-                        values = Dict(QUERY_BY_ITEM_NORM_PARAM => item_norm))
+    for nt in DBInterface.execute(db, "SELECT * FROM ($QUERY_BY_ITEM_NORM) WHERE enabled <> 0 AND rowid = last_insert_rowid()",
+                        (; Dict(QUERY_BY_ITEM_NORM_PARAM => item_norm)...))
         push!(entries, convert_expl_row(nt, [NormalExplIndex, PermanentExplIndex]))
     end
 
@@ -310,8 +311,8 @@ function expl(req)
     db = init_db()
 
     entries = []
-    for nt in SQLite.Query(db, "SELECT * FROM ($QUERY_BY_ITEM_NORM) WHERE enabled <> 0 AND ($selectors_sql) ORDER BY id",
-                            values = Dict(QUERY_BY_ITEM_NORM_PARAM => item_norm))
+    for nt in DBInterface.execute(db, "SELECT * FROM ($QUERY_BY_ITEM_NORM) WHERE enabled <> 0 AND ($selectors_sql) ORDER BY id",
+                            (; Dict(QUERY_BY_ITEM_NORM_PARAM => item_norm)...))
         push!(entries, convert_expl_row(nt, index_types))
     end
 
@@ -351,8 +352,8 @@ function www_expl(req)
     db = init_db()
 
     entries = []
-    for nt in SQLite.Query(db, "SELECT * FROM ($QUERY_BY_ITEM_NORM) WHERE enabled <> 0 AND ($selectors_sql) ORDER BY id",
-                            values = Dict(QUERY_BY_ITEM_NORM_PARAM => item_norm))
+    for nt in DBInterface.execute(db, "SELECT * FROM ($QUERY_BY_ITEM_NORM) WHERE enabled <> 0 AND ($selectors_sql) ORDER BY id",
+                            (; Dict(QUERY_BY_ITEM_NORM_PARAM => item_norm)...))
         push!(entries, convert_expl_row(nt, index_types))
     end
 
@@ -398,17 +399,17 @@ function del(req)
     db = init_db()
 
     entries = []
-    for nt in SQLite.Query(db, "SELECT * FROM ($QUERY_BY_ITEM_NORM) WHERE enabled <> 0 AND ($index_sql)",
-                        values = Dict(QUERY_BY_ITEM_NORM_PARAM => item_norm))
+    for nt in DBInterface.execute(db, "SELECT * FROM ($QUERY_BY_ITEM_NORM) WHERE enabled <> 0 AND ($index_sql)",
+                        (; Dict(QUERY_BY_ITEM_NORM_PARAM => item_norm)...))
         push!(entries, convert_expl_row(nt, index_types))
     end
 
     changes = 0
     if length(entries) == 1
-        SQLite.Query(db, "UPDATE t_expl SET enabled = 0 WHERE enabled <> 0 AND rowid = :rowid",
-                        values = Dict(:rowid => entries[1].rowid))
+        DBInterface.execute(db, "UPDATE t_expl SET enabled = 0 WHERE enabled <> 0 AND rowid = :rowid",
+                        (; Dict(:rowid => entries[1].rowid)...))
 
-        for nt in SQLite.Query(db, "SELECT changes() changes")
+        for nt in DBInterface.execute(db, "SELECT changes() changes")
             changes = nt.:changes
         end
     end
@@ -482,7 +483,7 @@ function find(req)
     db = init_db()
 
     entries = []
-    for nt in SQLite.Query(db, query, values = query_params)
+    for nt in DBInterface.execute(db, query, (; query_params...))
         push!(entries, conv_func(nt))
     end
 
@@ -520,7 +521,7 @@ function www_find(req)
     db = init_db()
 
     entries = []
-    for nt in SQLite.Query(db, query, values = query_params)
+    for nt in DBInterface.execute(db, query, (; query_params...))
         push!(entries, conv_func(nt))
     end
 
@@ -561,8 +562,8 @@ function topexpl(req)
     db = init_db()
 
     entries = []
-    for nt in SQLite.Query(db, QUERY_TOPEXPL,
-                            values = Dict(QUERY_TOPEXPL_LIMIT_PARAM => MAX_TOPEXPL))
+    for nt in DBInterface.execute(db, QUERY_TOPEXPL,
+                            (; Dict(QUERY_TOPEXPL_LIMIT_PARAM => MAX_TOPEXPL)...))
         push!(entries, convert_item_row(nt))
     end
 
