@@ -444,7 +444,7 @@ const QUERY_BY_ITEM_REGEXP = """
 const QUERY_REGEXP_PARAM = :regexp
 
 const FIND_ARG_PARSE_SETTINGS = ArgParseSettings(exc_handler = (s, err) -> rethrow(err))
-@add_arg_table FIND_ARG_PARSE_SETTINGS begin
+@add_arg_table! FIND_ARG_PARSE_SETTINGS begin
     "--keys", "-k"
         nargs = 0
         help = "find items whose unicode-normalized item key matches the unicode-normalized regex"
