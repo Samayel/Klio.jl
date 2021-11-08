@@ -3,14 +3,20 @@ FROM ubuntu:20.04
 
 USER root
 
+ENV DEBIAN_FRONTEND=noninteractive
+
 #
 # Install ubuntu packages
 #
 RUN apt-get update \
- && DEBIAN_FRONTEND=noninteractive apt-get install -y \
+ && apt-get install -y \
       curl \
+      tzdata \
       xz-utils \
  && rm -rf /var/lib/apt/lists/*
+
+RUN ln -fs /usr/share/zoneinfo/Europe/Berlin /etc/localtime \
+ && dpkg-reconfigure --frontend noninteractive tzdata
 
 #
 # Install Wolfram Engine
@@ -34,7 +40,7 @@ RUN cd /tmp \
 # Install more ubuntu packages
 #
 RUN apt-get update \
- && DEBIAN_FRONTEND=noninteractive apt-get install -y \
+ && apt-get install -y \
       libxcursor1 \
       libxft2 \
       libxrandr2 \
@@ -42,8 +48,8 @@ RUN apt-get update \
  && cd /tmp \
  && curl -f -sS -L -o maxima-common_5.44.0-1_all.deb https://fs.quyo.net/maxima/maxima-common_5.44.0-1_all.deb \
  && curl -f -sS -L -o maxima-sbcl_5.44.0-1_amd64.deb https://fs.quyo.net/maxima/maxima-sbcl_5.44.0-1_amd64.deb \
- && DEBIAN_FRONTEND=noninteractive dpkg -i maxima-common_5.44.0-1_all.deb \
- && DEBIAN_FRONTEND=noninteractive dpkg -i maxima-sbcl_5.44.0-1_amd64.deb \
+ && dpkg -i maxima-common_5.44.0-1_all.deb \
+ && dpkg -i maxima-sbcl_5.44.0-1_amd64.deb \
  && rm -f *.deb
 
 #
