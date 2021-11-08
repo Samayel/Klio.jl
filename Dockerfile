@@ -1,5 +1,6 @@
-FROM ubuntu:20.04
+FROM quyo/wolframengine:12.3.1-20.04
 
+MAINTAINER Markus John <johm@quyo.de>
 
 USER root
 
@@ -12,18 +13,10 @@ RUN apt-get update \
  && apt-get install -y \
       curl \
       tzdata \
-      xz-utils \
  && rm -rf /var/lib/apt/lists/*
 
 RUN ln -fs /usr/share/zoneinfo/Europe/Berlin /etc/localtime \
  && dpkg-reconfigure --frontend noninteractive tzdata
-
-#
-# Install Wolfram Engine
-#
-RUN curl -f -sS -L -o /tmp/wolfram-engine https://account.wolfram.com/download/public/wolfram-engine/desktop/LINUX \
- && bash /tmp/wolfram-engine -- -auto -verbose \
- && rm -f /tmp/wolfram-engine
 
 #
 # Install Julia
