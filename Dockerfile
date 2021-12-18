@@ -1,4 +1,4 @@
-FROM quyo/wolframengine:12.3.1-20.04
+FROM quyo/wolframengine:13.0.0-20.04
 
 MAINTAINER Markus John <johm@quyo.de>
 
@@ -21,7 +21,7 @@ RUN ln -fs /usr/share/zoneinfo/Europe/Berlin /etc/localtime \
 #
 # Install Julia
 #
-ARG JULIA=1.6.3
+ARG JULIA=1.7.0
 RUN cd /tmp \
  && curl -f -sS -L -o julia-${JULIA}-linux-x86_64.tar.gz https://julialang-s3.julialang.org/bin/linux/x64/${JULIA%.*}/julia-${JULIA}-linux-x86_64.tar.gz \
  && tar xf julia-${JULIA}-linux-x86_64.tar.gz -C /opt \
