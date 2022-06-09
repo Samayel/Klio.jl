@@ -8,6 +8,7 @@ using Unicode
 using StringEncodings
 using ArgParse
 using HTTP
+using JSON2
 
 using ...Klio
 using ..Mattermost
@@ -581,6 +582,22 @@ function topexpl(req)
     end
 
     return OutgoingWebhookResponse(text)
+end
+
+function www_export(req)
+    db = init_db()
+
+    entries = []
+    for nt in DBInterface.execute(db, "SELECT * FROM t_expl ORDER BY ID")
+        push!(entries, (k = nt.:item, v = nt.:expl, u = nt.:nick, t = nt.:datetime, e = nt.:enabled != 0))
+    end
+
+    res = req.response
+
+    HTTP.setheader(res, "Content-Type" => "application/json")
+    JSON2.write(IOBuffer(res.body, write = true), entries)
+
+    return res
 end
 
 end
