@@ -15,7 +15,6 @@ repl_install_klio() = begin
         run(`$repldir/install-maxima`)
     end
 
-    pkg"add SQLite#master"
     pkg"precompile"
 end
 
