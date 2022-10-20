@@ -1,4 +1,4 @@
-FROM quyo/wolframengine:13.0.1-22.04
+FROM quyo/wolframengine:13.1.0-22.04
 
 MAINTAINER Markus John <johm@quyo.de>
 
@@ -21,7 +21,7 @@ RUN ln -fs /usr/share/zoneinfo/Europe/Berlin /etc/localtime \
 #
 # Install Julia
 #
-ARG JULIA=1.7.3
+ARG JULIA=1.8.2
 RUN cd /tmp \
  && curl -f -sS -L -o julia-${JULIA}-linux-x86_64.tar.gz https://julialang-s3.julialang.org/bin/linux/x64/${JULIA%.*}/julia-${JULIA}-linux-x86_64.tar.gz \
  && tar xf julia-${JULIA}-linux-x86_64.tar.gz -C /opt \
@@ -52,6 +52,7 @@ RUN adduser --quiet --shell /bin/bash --gecos "Klio,101,," --disabled-password k
 
 COPY ./initialize.jl     /home/klio/Klio.jl/
 COPY ./Project.toml      /home/klio/Klio.jl/
+COPY ./Manifest.toml     /home/klio/Klio.jl/
 COPY ./src/Klio-empty.jl /home/klio/Klio.jl/src/Klio.jl
 RUN chown -R klio:klio /home/klio/
 
