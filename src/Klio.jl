@@ -3,16 +3,13 @@ module Klio
 using HTTP
 using Sockets
 
-include("json_handler.jl")
 include("mattermost_types.jl")
+include("mattermost_handler.jl")
 
 include("cmd_calc.jl")
 include("cmd_choose.jl")
 include("cmd_julia.jl")
 include("cmd_time.jl")
-
-using .Mattermost
-using .JSON
 
 mutable struct Settings
     server_host::Sockets.IPAddr # HTTP server's IP Address to listen on
@@ -31,12 +28,10 @@ settings = Settings()
 function run()
     klioRouter = HTTP.Router()
 
-    wrap(h) = JSONHandler(OutgoingWebhookRequest, h)
-
-    HTTP.@register(klioRouter, "POST", "/calc", wrap(Calc.calc))
-    HTTP.@register(klioRouter, "POST", "/choose", wrap(Choose.choose))
-    HTTP.@register(klioRouter, "POST", "/julia", wrap(Julia.julia))
-    HTTP.@register(klioRouter, "POST", "/time", wrap(Time.time))
+    HTTP.register!(klioRouter, "POST", "/calc", MattermostHandler.wrap(Calc.calc))
+    HTTP.register!(klioRouter, "POST", "/choose", MattermostHandler.wrap(Choose.choose))
+    HTTP.register!(klioRouter, "POST", "/julia", MattermostHandler.wrap(Julia.julia))
+    HTTP.register!(klioRouter, "POST", "/time", MattermostHandler.wrap(Time.time))
 
     HTTP.serve(klioRouter, settings.server_host, settings.server_port, verbose = settings.server_verbose)
 end

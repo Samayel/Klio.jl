@@ -1,4 +1,4 @@
-module Mattermost
+module MattermostTypes
 
 using JSON2
 

@@ -1,6 +1,6 @@
 module Choose
 
-using ..Mattermost
+using ..MattermostTypes
 
 function choose(req)
     options = split(req.text)

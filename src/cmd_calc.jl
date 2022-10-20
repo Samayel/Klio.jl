@@ -1,6 +1,6 @@
 module Calc
 
-using ..Mattermost
+using ..MattermostTypes
 
 reduce_initialized = false
 

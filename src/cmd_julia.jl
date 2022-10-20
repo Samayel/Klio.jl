@@ -1,6 +1,6 @@
 module Julia
 
-using ..Mattermost
+using ..MattermostTypes
 
 using Latexify
 using Random
